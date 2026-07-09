@@ -1,8 +1,8 @@
 # VPS Deployment
 
-The current deployment is simulation/backtest only. Do not add live keys until
-the market scanner, position manager, and trade executor are implemented and
-tested.
+The default deployment is dry-run and read-only. Adding a private key does not
+enable live trading unless the explicit live config and environment switch are
+both enabled.
 
 ## Ubuntu Setup
 
@@ -18,6 +18,7 @@ python -m unittest discover -s tests -v
 python -m weather_edge.cli backtest --file data/sample_backtest.json --config config/risk.example.json
 python -m weather_edge.cli live-weather --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10
 python -m weather_edge.cli live-markets --limit 20 --pages 5
+python -m weather_edge.cli live-dry-run --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --strategy-config config/strategy.example.json --risk-config config/risk.example.json --limit 20 --pages 2
 cmake -S cpp/pnl_curve_engine -B build/pnl_curve_engine
 cmake --build build/pnl_curve_engine
 ./build/pnl_curve_engine/pnl_curve_engine data/sample_buckets.csv
@@ -40,6 +41,45 @@ python -m weather_edge.cli live-monitor-loop \
 ```
 
 This command is read-only. It does not create orders.
+
+## Real Data Dry-Run
+
+Use this before any live trading switch:
+
+```bash
+python -m weather_edge.cli live-dry-run \
+  --city "New York" \
+  --lat 40.7128 \
+  --lon -74.0060 \
+  --date 2026-07-10 \
+  --strategy-config config/strategy.example.json \
+  --risk-config config/risk.example.json \
+  --orders-db data/orders.sqlite \
+  --positions-db data/positions.sqlite \
+  --limit 20 \
+  --pages 2
+```
+
+This uses real Polymarket market discovery, real CLOB orderbooks, and real
+Open-Meteo/NWS weather, but it records simulated orders only.
+
+Supplying `POLYMARKET_PRIVATE_KEY` is not enough to trade. Live mode requires:
+
+```bash
+export POLYMARKET_PRIVATE_KEY="..."
+export LIVE_TRADING_ENABLED=true
+pip install py-clob-client
+python -m weather_edge.cli live-dry-run \
+  --city "New York" \
+  --lat 40.7128 \
+  --lon -74.0060 \
+  --date 2026-07-10 \
+  --strategy-config config/strategy.live.example.json \
+  --risk-config config/risk.example.json
+```
+
+Live mode still passes through `risk_manager`, `pnl_curve`, duplicate order
+guard, and persistent order logging.
 
 ## systemd Example
 
@@ -73,13 +113,7 @@ tail -f /opt/polymarket-weather-edge/logs/live_monitor.jsonl
 
 ## Required Before Live Trading
 
-- Polymarket market scanner
-- Weather data source adapters
-- Settlement rule parser for market descriptions and official source fields
-- Bucket probability model
-- Orderbook freshness checks from live data
-- Position manager
-- Duplicate order guard with persistent client order ids
-- Partial fill handling
-- Slippage limits
-- Dry-run to live switch protected by explicit config
+- Historical data collection for serious backtests
+- Stronger weather probability model
+- Real partial fill reconciliation from CLOB order status
+- Alerting for data disagreement, death gaps, and stale orderbooks

@@ -5,11 +5,13 @@ from dataclasses import asdict
 from .backtest import run_backtest
 from .config import load_risk_config
 from .io import curve_to_dict, load_plan
+from .live_pipeline import run_live_dry_run
 from .monitor import build_live_snapshot, run_live_monitor_loop
 from .pnl_curve import build_pnl_curve
 from .risk_manager import RiskConfig, evaluate_trade_plan
 from .simulator import simulate_settlement
 from .storage import init_db, save_analysis
+from .strategy_config import load_strategy_config
 
 
 def main(argv=None) -> int:
@@ -76,6 +78,21 @@ def main(argv=None) -> int:
     monitor_loop_parser.add_argument("--query", default="")
     monitor_loop_parser.add_argument("--pages", type=int, default=3)
     monitor_loop_parser.add_argument("--max-runs", type=int)
+
+    dry_run_parser = sub.add_parser("live-dry-run")
+    dry_run_parser.add_argument("--city", required=True)
+    dry_run_parser.add_argument("--lat", type=float, required=True)
+    dry_run_parser.add_argument("--lon", type=float, required=True)
+    dry_run_parser.add_argument("--date", required=True)
+    dry_run_parser.add_argument("--strategy-config")
+    dry_run_parser.add_argument("--risk-config")
+    dry_run_parser.add_argument("--orders-db", default="data/orders.sqlite")
+    dry_run_parser.add_argument("--positions-db", default="data/positions.sqlite")
+    dry_run_parser.add_argument("--limit", type=int, default=20)
+    dry_run_parser.add_argument("--tag-id", default="")
+    dry_run_parser.add_argument("--slug", default="")
+    dry_run_parser.add_argument("--query", default="")
+    dry_run_parser.add_argument("--pages", type=int, default=2)
 
     args = parser.parse_args(argv)
 
@@ -177,6 +194,27 @@ def main(argv=None) -> int:
             max_runs=args.max_runs,
         )
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
+        return 0
+
+    if args.command == "live-dry-run":
+        strategy = load_strategy_config(args.strategy_config)
+        risk_config = load_risk_config(args.risk_config) if args.risk_config else RiskConfig()
+        result = run_live_dry_run(
+            args.city,
+            args.lat,
+            args.lon,
+            args.date,
+            strategy,
+            risk_config,
+            args.orders_db,
+            args.positions_db,
+            market_limit=args.limit,
+            tag_id=args.tag_id,
+            slug=args.slug,
+            query=args.query,
+            pages=args.pages,
+        )
+        print(json.dumps(result, indent=2))
         return 0
 
     return 1

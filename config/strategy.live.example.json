@@ -1,0 +1,13 @@
+{
+  "execution_mode": "live",
+  "live_trading_enabled": true,
+  "private_key_env": "POLYMARKET_PRIVATE_KEY",
+  "min_order_edge": 0.03,
+  "main_bucket_shares": 2.0,
+  "neighbor_bucket_shares": 1.0,
+  "tail_bucket_shares": 0.5,
+  "max_buckets_to_buy": 4,
+  "min_tail_probability": 0.03,
+  "duplicate_order_window_seconds": 3600,
+  "dry_run_fill_ratio": 1.0
+}

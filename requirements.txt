@@ -1,1 +1,3 @@
-# Runtime uses Python standard library only.
+# Core dry-run runtime uses Python standard library only.
+# Install py-clob-client on VPS only when intentionally enabling live trading.
+# py-clob-client

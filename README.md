@@ -21,6 +21,9 @@ simulation/backtest runner.
 - Read-only Open-Meteo and NWS forecast snapshots
 - Settlement rule parsing for source, unit, station/grid, timezone, and bucket bounds
 - Bucket probability curve from live forecasts
+- Dry-run trade planning against real market/weather/orderbook data
+- Duplicate order guard and simulated position persistence
+- Live trading path guarded by config, environment, private key, and official CLOB client
 
 No live Polymarket order is sent by the current code.
 
@@ -41,6 +44,7 @@ python -m weather_edge.cli live-markets --limit 20 --pages 5
 python -m weather_edge.cli live-weather --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10
 python -m weather_edge.cli live-monitor --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --limit 20 --pages 5
 python -m weather_edge.cli live-monitor-loop --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --output logs/live_monitor.jsonl --interval 300 --limit 20 --pages 2 --max-runs 1
+python -m weather_edge.cli live-dry-run --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --strategy-config config/strategy.example.json --risk-config config/risk.example.json --limit 20 --pages 2
 ```
 
 If you already know a Polymarket event or market slug, prefer slug lookup:
@@ -53,6 +57,18 @@ python -m weather_edge.cli live-markets --slug POLYMARKET_EVENT_OR_MARKET_SLUG
 pagination where possible, caps page size at 100, and can filter by tag, slug,
 city, or query text. Current live data commands are read-only and do not create
 orders.
+
+`live-dry-run` uses real market/weather/orderbook data but records simulated
+orders and simulated positions only. Supplying `POLYMARKET_PRIVATE_KEY` does not
+enable live trading. Live trading requires all of:
+
+```text
+strategy config execution_mode = live
+strategy config live_trading_enabled = true
+environment LIVE_TRADING_ENABLED = true
+environment POLYMARKET_PRIVATE_KEY is set
+py-clob-client is installed
+```
 
 Optional C++ PnL engine build on a machine with CMake:
 
@@ -122,6 +138,10 @@ weather_edge/
   orderbook.py      Read-only CLOB /book summary
   settlement_rules.py Parse market rule text and bucket bounds
   bucket_probability.py Convert forecasts into bucket probabilities
+  strategy_planner.py Turn probabilities into risk-checked order plans
+  trade_executor.py Dry-run execution and guarded live CLOB path
+  position_manager.py Simulated position persistence
+  order_store.py Duplicate order guard and order log
   weather_sources.py Open-Meteo and NWS forecast snapshots
   monitor.py        Combined read-only market + weather snapshot
 cpp/
@@ -132,6 +152,8 @@ data/
   sample_buckets.csv
 config/
   risk.example.json
+  strategy.example.json
+  strategy.live.example.json
 docs/
   deploy_vps.md
 scripts/
