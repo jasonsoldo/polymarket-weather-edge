@@ -16,6 +16,8 @@ python3 -m venv .venv
 pip install -r requirements.txt
 python -m unittest discover -s tests -v
 python -m weather_edge.cli backtest --file data/sample_backtest.json --config config/risk.example.json
+python -m weather_edge.cli live-weather --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10
+python -m weather_edge.cli live-markets --limit 20 --pages 5
 cmake -S cpp/pnl_curve_engine -B build/pnl_curve_engine
 cmake --build build/pnl_curve_engine
 ./build/pnl_curve_engine/pnl_curve_engine data/sample_buckets.csv
@@ -69,6 +71,7 @@ sudo systemctl status weather-edge-sim
 
 - Polymarket market scanner
 - Weather data source adapters
+- Settlement rule parser for market descriptions and official source fields
 - Bucket probability model
 - Orderbook freshness checks from live data
 - Position manager

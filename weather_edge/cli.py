@@ -5,6 +5,7 @@ from dataclasses import asdict
 from .backtest import run_backtest
 from .config import load_risk_config
 from .io import curve_to_dict, load_plan
+from .monitor import build_live_snapshot
 from .pnl_curve import build_pnl_curve
 from .risk_manager import RiskConfig, evaluate_trade_plan
 from .simulator import simulate_settlement
@@ -32,6 +33,34 @@ def main(argv=None) -> int:
     backtest_parser = sub.add_parser("backtest")
     backtest_parser.add_argument("--file", required=True)
     backtest_parser.add_argument("--config")
+
+    markets_parser = sub.add_parser("live-markets")
+    markets_parser.add_argument("--city", default="")
+    markets_parser.add_argument("--limit", type=int, default=100)
+    markets_parser.add_argument("--tag-id", default="")
+    markets_parser.add_argument("--slug", default="")
+    markets_parser.add_argument("--query", default="")
+    markets_parser.add_argument("--pages", type=int, default=3)
+
+    sub.add_parser("live-tags")
+
+    weather_parser = sub.add_parser("live-weather")
+    weather_parser.add_argument("--city", required=True)
+    weather_parser.add_argument("--lat", type=float, required=True)
+    weather_parser.add_argument("--lon", type=float, required=True)
+    weather_parser.add_argument("--date", required=True)
+
+    monitor_parser = sub.add_parser("live-monitor")
+    monitor_parser.add_argument("--city", required=True)
+    monitor_parser.add_argument("--lat", type=float, required=True)
+    monitor_parser.add_argument("--lon", type=float, required=True)
+    monitor_parser.add_argument("--date", required=True)
+    monitor_parser.add_argument("--limit", type=int, default=100)
+    monitor_parser.add_argument("--books", action="store_true")
+    monitor_parser.add_argument("--tag-id", default="")
+    monitor_parser.add_argument("--slug", default="")
+    monitor_parser.add_argument("--query", default="")
+    monitor_parser.add_argument("--pages", type=int, default=3)
 
     args = parser.parse_args(argv)
 
@@ -67,6 +96,53 @@ def main(argv=None) -> int:
     if args.command == "backtest":
         summary, results = run_backtest(args.file, config)
         print(json.dumps({"summary": asdict(summary), "results": results}, indent=2))
+        return 0
+
+    if args.command == "live-markets":
+        from .market_scanner import fetch_weather_markets
+
+        markets = [
+            market.to_dict()
+            for market in fetch_weather_markets(
+                args.limit,
+                city=args.city,
+                tag_id=args.tag_id,
+                slug=args.slug,
+                query=args.query,
+                pages=args.pages,
+            )
+        ]
+        print(json.dumps({"markets_found": len(markets), "markets": markets}, indent=2))
+        return 0
+
+    if args.command == "live-tags":
+        from .market_scanner import discover_weather_tags
+
+        tags = [tag.to_dict() for tag in discover_weather_tags()]
+        print(json.dumps({"weather_tags_found": len(tags), "tags": tags}, indent=2))
+        return 0
+
+    if args.command == "live-weather":
+        from .weather_sources import fetch_weather_snapshot
+
+        weather = fetch_weather_snapshot(args.city, args.lat, args.lon, args.date)
+        print(json.dumps(weather.to_dict(), indent=2))
+        return 0
+
+    if args.command == "live-monitor":
+        snapshot = build_live_snapshot(
+            args.city,
+            args.lat,
+            args.lon,
+            args.date,
+            market_limit=args.limit,
+            include_books=args.books,
+            tag_id=args.tag_id,
+            slug=args.slug,
+            query=args.query,
+            pages=args.pages,
+        )
+        print(json.dumps(snapshot, indent=2))
         return 0
 
     return 1

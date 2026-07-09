@@ -17,6 +17,8 @@ simulation/backtest runner.
 - SQLite analysis log
 - VPS-friendly Python CLI
 - C++ PnL curve engine source for performance-sensitive calculation
+- Read-only live Polymarket market discovery
+- Read-only Open-Meteo and NWS forecast snapshots
 
 No live Polymarket order is sent by the current code.
 
@@ -28,6 +30,26 @@ python -m weather_edge.cli analyze --plan data/sample_plan.json --config config/
 python -m weather_edge.cli simulate --plan data/sample_plan.json --winning-bucket 88F --config config/risk.example.json
 python -m weather_edge.cli backtest --file data/sample_backtest.json --config config/risk.example.json
 ```
+
+Read-only live data smoke tests:
+
+```powershell
+python -m weather_edge.cli live-tags
+python -m weather_edge.cli live-markets --limit 20 --pages 5
+python -m weather_edge.cli live-weather --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10
+python -m weather_edge.cli live-monitor --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --limit 20 --pages 5
+```
+
+If you already know a Polymarket event or market slug, prefer slug lookup:
+
+```powershell
+python -m weather_edge.cli live-markets --slug POLYMARKET_EVENT_OR_MARKET_SLUG
+```
+
+`live-markets` follows the current Polymarket docs: it uses Gamma keyset
+pagination where possible, caps page size at 100, and can filter by tag, slug,
+city, or query text. Current live data commands are read-only and do not create
+orders.
 
 Optional C++ PnL engine build on a machine with CMake:
 
@@ -93,6 +115,10 @@ weather_edge/
   backtest.py       JSON scenario backtest runner
   storage.py        SQLite analysis log
   cli.py            Command line entrypoint
+  market_scanner.py Read-only Gamma event/market discovery
+  orderbook.py      Read-only CLOB /book summary
+  weather_sources.py Open-Meteo and NWS forecast snapshots
+  monitor.py        Combined read-only market + weather snapshot
 cpp/
   pnl_curve_engine/ C++ bucket PnL calculator; no order execution
 data/
