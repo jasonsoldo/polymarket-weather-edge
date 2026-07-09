@@ -48,6 +48,28 @@ class RiskDecision:
     reasons: tuple[str, ...]
 
 
+def weather_data_block(disagreement: float, confidence: float, config: Optional[RiskConfig] = None) -> dict:
+    config = config or RiskConfig()
+    reasons = []
+    if disagreement > config.disagreement_threshold:
+        reasons.append("weather data disagreement too high")
+    if confidence < config.min_confidence:
+        reasons.append("confidence below min_confidence")
+    if not reasons:
+        return {}
+    return {
+        "recommended_action": "NO_TRADE",
+        "blocked_by": "data_disagreement",
+        "risk_reasons": ["NO_TRADE"] + reasons,
+        "disagreement": disagreement,
+        "confidence": confidence,
+        "threshold": {
+            "max_allowed_weather_disagreement": config.disagreement_threshold,
+            "min_confidence": config.min_confidence,
+        },
+    }
+
+
 def evaluate_trade_plan(
     curve: PnLCurve,
     state: MarketState,

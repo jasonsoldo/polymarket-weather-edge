@@ -7,6 +7,7 @@ from typing import Optional
 from .bucket_probability import build_bucket_probabilities
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
+from .risk_manager import RiskConfig, weather_data_block
 from .settlement_rules import parse_settlement_rule
 from .weather_sources import fetch_weather_snapshot
 
@@ -34,6 +35,7 @@ def build_live_snapshot(
         include_broad_weather=include_broad_weather,
     )
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
+    risk_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, RiskConfig())
     market_rows = []
     for market in markets:
         row = market.to_dict()
@@ -53,7 +55,7 @@ def build_live_snapshot(
                     row["books"].append({"token_id": token_id, "error": str(exc)})
         market_rows.append(row)
 
-    return {
+    snapshot = {
         "observed_at": datetime.now(timezone.utc).isoformat(),
         "city": city,
         "target_date": target_date,
@@ -69,6 +71,16 @@ def build_live_snapshot(
             "if markets_found is zero, check tag_id or slug from Polymarket UI/API",
         ],
     }
+    if risk_block:
+        snapshot.update(risk_block)
+        snapshot["notes"].insert(0, "NO_TRADE")
+    elif not market_rows:
+        snapshot["recommended_action"] = "NO_MARKET"
+        snapshot["risk_reasons"] = ["no strict city temperature markets found"]
+    else:
+        snapshot["recommended_action"] = "WATCH"
+        snapshot["risk_reasons"] = []
+    return snapshot
 
 
 def run_live_monitor_loop(

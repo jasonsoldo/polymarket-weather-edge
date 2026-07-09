@@ -4,10 +4,33 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from weather_edge.monitor import run_live_monitor_loop
+from weather_edge.monitor import build_live_snapshot, run_live_monitor_loop
+from weather_edge.weather_sources import WeatherSnapshot
 
 
 class MonitorLoopTests(unittest.TestCase):
+    def test_monitor_snapshot_marks_no_trade_when_weather_confidence_is_bad(self):
+        weather = WeatherSnapshot(
+            city="New York",
+            latitude=40.7128,
+            longitude=-74.006,
+            target_date="2026-07-10",
+            forecasts=(),
+            disagreement=3.9,
+            confidence=0.65,
+        )
+
+        with patch("weather_edge.monitor.fetch_weather_markets", return_value=[]), patch(
+            "weather_edge.monitor.fetch_weather_snapshot", return_value=weather
+        ):
+            snapshot = build_live_snapshot("New York", 40.7128, -74.006, "2026-07-10")
+
+        self.assertEqual(snapshot["recommended_action"], "NO_TRADE")
+        self.assertEqual(snapshot["blocked_by"], "data_disagreement")
+        self.assertIn("weather data disagreement too high", snapshot["risk_reasons"])
+        self.assertIn("confidence below min_confidence", snapshot["risk_reasons"])
+        self.assertEqual(snapshot["threshold"]["max_allowed_weather_disagreement"], 2.0)
+
     def test_monitor_loop_writes_jsonl_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "live_monitor.jsonl"

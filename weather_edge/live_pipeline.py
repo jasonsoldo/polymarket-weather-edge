@@ -2,7 +2,7 @@ from .bucket_probability import build_bucket_probabilities
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
 from .position_manager import positions_for_market, total_exposure
-from .risk_manager import RiskConfig
+from .risk_manager import RiskConfig, weather_data_block
 from .settlement_rules import parse_settlement_rule
 from .strategy_config import StrategyConfig
 from .strategy_planner import build_trade_plan
@@ -27,7 +27,7 @@ def run_live_dry_run(
     include_broad_weather: bool = False,
 ) -> dict:
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
-    weather_block = _weather_block(weather, risk)
+    weather_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, risk)
     if weather_block:
         return {
             "mode": strategy.execution_mode,
@@ -101,28 +101,6 @@ def run_live_dry_run(
             "execution_mode must be live and LIVE_TRADING_ENABLED env must equal true for live path",
             "live path uses official py-clob-client only when installed and explicitly enabled",
         ],
-    }
-
-
-def _weather_block(weather, risk: RiskConfig) -> dict:
-    reasons = []
-    disagreement = weather.disagreement or 0.0
-    if disagreement > risk.disagreement_threshold:
-        reasons.append("weather data disagreement too high")
-    if weather.confidence < risk.min_confidence:
-        reasons.append("confidence below min_confidence")
-    if not reasons:
-        return {}
-    return {
-        "recommended_action": "NO_TRADE",
-        "blocked_by": "data_disagreement",
-        "risk_reasons": ["NO_TRADE"] + reasons,
-        "disagreement": disagreement,
-        "confidence": weather.confidence,
-        "threshold": {
-            "max_allowed_weather_disagreement": risk.disagreement_threshold,
-            "min_confidence": risk.min_confidence,
-        },
     }
 
 
