@@ -1,5 +1,7 @@
+from .bucket_probability import build_bucket_probabilities
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
+from .settlement_rules import parse_settlement_rule
 from .weather_sources import fetch_weather_snapshot
 
 
@@ -27,6 +29,13 @@ def build_live_snapshot(
     market_rows = []
     for market in markets:
         row = market.to_dict()
+        try:
+            rule = parse_settlement_rule(market)
+            row["settlement_rule"] = rule.to_dict()
+            row["bucket_probabilities"] = build_bucket_probabilities(rule, weather, market).to_dict()
+        except ValueError as exc:
+            row["settlement_rule_error"] = str(exc)
+            row["bucket_probabilities"] = None
         row["books"] = []
         if include_books:
             for token_id in market.token_ids:

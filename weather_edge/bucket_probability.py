@@ -1,0 +1,145 @@
+import math
+from dataclasses import asdict, dataclass
+from typing import Optional
+
+from .market_scanner import WeatherMarket
+from .settlement_rules import BucketSpec, SettlementRule
+from .weather_sources import WeatherSnapshot
+
+
+@dataclass(frozen=True)
+class ProbabilityModel:
+    mean: float
+    standard_deviation: float
+    source_count: int
+    disagreement: Optional[float]
+    confidence: float
+    target_temperature_type: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class BucketProbability:
+    bucket: str
+    lower: Optional[float]
+    upper: Optional[float]
+    model_probability: float
+    market_price: float
+    edge: float
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class BucketProbabilityCurve:
+    model: ProbabilityModel
+    buckets: tuple[BucketProbability, ...]
+    probability_sum: float
+
+    def to_dict(self) -> dict:
+        return {
+            "model": self.model.to_dict(),
+            "probability_sum": self.probability_sum,
+            "buckets": [bucket.to_dict() for bucket in self.buckets],
+        }
+
+
+def build_bucket_probabilities(
+    rule: SettlementRule,
+    weather: WeatherSnapshot,
+    market: WeatherMarket,
+) -> BucketProbabilityCurve:
+    values = _forecast_values(rule, weather)
+    if not values:
+        raise ValueError("no forecast values available for market type")
+
+    mean = sum(values) / len(values)
+    stddev = _stddev(rule, weather, values)
+    model = ProbabilityModel(
+        mean=mean,
+        standard_deviation=stddev,
+        source_count=len(values),
+        disagreement=weather.disagreement,
+        confidence=min(rule.confidence, weather.confidence),
+        target_temperature_type=rule.market_type,
+    )
+
+    raw_probs = [_bucket_probability(bucket, mean, stddev, rule.rounding_rule) for bucket in rule.buckets]
+    total = sum(raw_probs)
+    normalized = [prob / total for prob in raw_probs] if total > 0 else raw_probs
+    rows = []
+    for index, bucket in enumerate(rule.buckets):
+        market_price = market.outcome_prices[index] if index < len(market.outcome_prices) else 0.0
+        probability = normalized[index] if index < len(normalized) else 0.0
+        rows.append(
+            BucketProbability(
+                bucket=bucket.label,
+                lower=bucket.lower,
+                upper=bucket.upper,
+                model_probability=probability,
+                market_price=market_price,
+                edge=probability - market_price,
+            )
+        )
+    return BucketProbabilityCurve(
+        model=model,
+        buckets=tuple(rows),
+        probability_sum=sum(row.model_probability for row in rows),
+    )
+
+
+def _forecast_values(rule: SettlementRule, weather: WeatherSnapshot) -> list[float]:
+    values = []
+    for forecast in weather.forecasts:
+        value = forecast.min_temp if rule.market_type == "min_temp" else forecast.max_temp
+        if value is not None:
+            values.append(float(value))
+    return values
+
+
+def _stddev(rule: SettlementRule, weather: WeatherSnapshot, values: list[float]) -> float:
+    if len(values) >= 2:
+        mean = sum(values) / len(values)
+        sample = math.sqrt(sum((value - mean) ** 2 for value in values) / len(values))
+    else:
+        sample = 0.0
+    disagreement_component = (weather.disagreement or 0.0) / 2.0
+    confidence_penalty = max(0.0, 0.80 - min(rule.confidence, weather.confidence)) * 2.0
+    return max(1.0, sample, disagreement_component, confidence_penalty)
+
+
+def _bucket_probability(
+    bucket: BucketSpec,
+    mean: float,
+    stddev: float,
+    rounding_rule: str,
+) -> float:
+    lower, upper = _rounded_bounds(bucket, rounding_rule)
+    if lower is None and upper is None:
+        return 0.0
+    if lower is None:
+        return _normal_cdf(upper, mean, stddev)
+    if upper is None:
+        return 1.0 - _normal_cdf(lower, mean, stddev)
+    return max(0.0, _normal_cdf(upper, mean, stddev) - _normal_cdf(lower, mean, stddev))
+
+
+def _rounded_bounds(bucket: BucketSpec, rounding_rule: str) -> tuple[Optional[float], Optional[float]]:
+    if rounding_rule == "floor":
+        lower = bucket.lower
+        upper = None if bucket.upper is None else bucket.upper + 1.0
+    elif rounding_rule == "ceil":
+        lower = None if bucket.lower is None else bucket.lower - 1.0
+        upper = bucket.upper
+    else:
+        lower = None if bucket.lower is None else bucket.lower - 0.5
+        upper = None if bucket.upper is None else bucket.upper + 0.5
+    return lower, upper
+
+
+def _normal_cdf(value: float, mean: float, stddev: float) -> float:
+    z = (value - mean) / (stddev * math.sqrt(2.0))
+    return 0.5 * (1.0 + math.erf(z))

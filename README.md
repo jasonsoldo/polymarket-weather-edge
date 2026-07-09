@@ -19,6 +19,8 @@ simulation/backtest runner.
 - C++ PnL curve engine source for performance-sensitive calculation
 - Read-only live Polymarket market discovery
 - Read-only Open-Meteo and NWS forecast snapshots
+- Settlement rule parsing for source, unit, station/grid, timezone, and bucket bounds
+- Bucket probability curve from live forecasts
 
 No live Polymarket order is sent by the current code.
 
@@ -117,6 +119,8 @@ weather_edge/
   cli.py            Command line entrypoint
   market_scanner.py Read-only Gamma event/market discovery
   orderbook.py      Read-only CLOB /book summary
+  settlement_rules.py Parse market rule text and bucket bounds
+  bucket_probability.py Convert forecasts into bucket probabilities
   weather_sources.py Open-Meteo and NWS forecast snapshots
   monitor.py        Combined read-only market + weather snapshot
 cpp/
