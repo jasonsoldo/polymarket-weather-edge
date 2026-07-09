@@ -5,7 +5,7 @@ from dataclasses import asdict
 from .backtest import run_backtest
 from .config import load_risk_config
 from .io import curve_to_dict, load_plan
-from .monitor import build_live_snapshot
+from .monitor import build_live_snapshot, run_live_monitor_loop
 from .pnl_curve import build_pnl_curve
 from .risk_manager import RiskConfig, evaluate_trade_plan
 from .simulator import simulate_settlement
@@ -61,6 +61,21 @@ def main(argv=None) -> int:
     monitor_parser.add_argument("--slug", default="")
     monitor_parser.add_argument("--query", default="")
     monitor_parser.add_argument("--pages", type=int, default=3)
+
+    monitor_loop_parser = sub.add_parser("live-monitor-loop")
+    monitor_loop_parser.add_argument("--city", required=True)
+    monitor_loop_parser.add_argument("--lat", type=float, required=True)
+    monitor_loop_parser.add_argument("--lon", type=float, required=True)
+    monitor_loop_parser.add_argument("--date", required=True)
+    monitor_loop_parser.add_argument("--output", default="logs/live_monitor.jsonl")
+    monitor_loop_parser.add_argument("--interval", type=int, default=300)
+    monitor_loop_parser.add_argument("--limit", type=int, default=100)
+    monitor_loop_parser.add_argument("--books", action="store_true")
+    monitor_loop_parser.add_argument("--tag-id", default="")
+    monitor_loop_parser.add_argument("--slug", default="")
+    monitor_loop_parser.add_argument("--query", default="")
+    monitor_loop_parser.add_argument("--pages", type=int, default=3)
+    monitor_loop_parser.add_argument("--max-runs", type=int)
 
     args = parser.parse_args(argv)
 
@@ -143,6 +158,25 @@ def main(argv=None) -> int:
             pages=args.pages,
         )
         print(json.dumps(snapshot, indent=2))
+        return 0
+
+    if args.command == "live-monitor-loop":
+        runs = run_live_monitor_loop(
+            args.city,
+            args.lat,
+            args.lon,
+            args.date,
+            args.output,
+            interval_seconds=args.interval,
+            market_limit=args.limit,
+            include_books=args.books,
+            tag_id=args.tag_id,
+            slug=args.slug,
+            query=args.query,
+            pages=args.pages,
+            max_runs=args.max_runs,
+        )
+        print(json.dumps({"output": args.output, "runs": runs}, indent=2))
         return 0
 
     return 1

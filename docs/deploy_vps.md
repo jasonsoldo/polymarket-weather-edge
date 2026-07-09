@@ -23,34 +23,37 @@ cmake --build build/pnl_curve_engine
 ./build/pnl_curve_engine/pnl_curve_engine data/sample_buckets.csv
 ```
 
-## Keep a Simulation Process Running
+## Keep a Read-Only Monitor Running
 
-For a simple first VPS smoke test:
+For a simple first VPS monitor test:
 
 ```bash
-while true; do
-  date
-  python -m weather_edge.cli backtest --file data/sample_backtest.json --config config/risk.example.json
-  sleep 300
-done
+python -m weather_edge.cli live-monitor-loop \
+  --city "New York" \
+  --lat 40.7128 \
+  --lon -74.0060 \
+  --date 2026-07-10 \
+  --output logs/live_monitor.jsonl \
+  --interval 300 \
+  --limit 20 \
+  --pages 2
 ```
 
-For production-like operation, use a systemd service after replacing the sample
-input files with generated market snapshots.
+This command is read-only. It does not create orders.
 
 ## systemd Example
 
-Create `/etc/systemd/system/weather-edge-sim.service`:
+Create `/etc/systemd/system/weather-edge-monitor.service`:
 
 ```ini
 [Unit]
-Description=Weather Edge simulation loop
+Description=Weather Edge read-only monitor
 After=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/polymarket-weather-edge
-ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli backtest --file data/sample_backtest.json --config config/risk.example.json
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli live-monitor-loop --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --output logs/live_monitor.jsonl --interval 300 --limit 20 --pages 2
 Restart=on-failure
 RestartSec=30
 
@@ -62,9 +65,10 @@ Then:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable weather-edge-sim
-sudo systemctl start weather-edge-sim
-sudo systemctl status weather-edge-sim
+sudo systemctl enable weather-edge-monitor
+sudo systemctl start weather-edge-monitor
+sudo systemctl status weather-edge-monitor
+tail -f /opt/polymarket-weather-edge/logs/live_monitor.jsonl
 ```
 
 ## Required Before Live Trading

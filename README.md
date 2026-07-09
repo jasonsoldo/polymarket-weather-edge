@@ -40,6 +40,7 @@ python -m weather_edge.cli live-tags
 python -m weather_edge.cli live-markets --limit 20 --pages 5
 python -m weather_edge.cli live-weather --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10
 python -m weather_edge.cli live-monitor --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --limit 20 --pages 5
+python -m weather_edge.cli live-monitor-loop --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --output logs/live_monitor.jsonl --interval 300 --limit 20 --pages 2 --max-runs 1
 ```
 
 If you already know a Polymarket event or market slug, prefer slug lookup:

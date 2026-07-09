@@ -1,3 +1,9 @@
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
 from .bucket_probability import build_bucket_probabilities
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
@@ -46,6 +52,7 @@ def build_live_snapshot(
         market_rows.append(row)
 
     return {
+        "observed_at": datetime.now(timezone.utc).isoformat(),
         "city": city,
         "target_date": target_date,
         "weather": weather.to_dict(),
@@ -59,3 +66,47 @@ def build_live_snapshot(
             "if markets_found is zero, check tag_id or slug from Polymarket UI/API",
         ],
     }
+
+
+def run_live_monitor_loop(
+    city: str,
+    latitude: float,
+    longitude: float,
+    target_date: str,
+    output_path: str,
+    interval_seconds: int = 300,
+    market_limit: int = 100,
+    include_books: bool = False,
+    tag_id: str = "",
+    slug: str = "",
+    query: str = "",
+    pages: int = 3,
+    max_runs: Optional[int] = None,
+) -> int:
+    if interval_seconds < 1:
+        raise ValueError("interval_seconds must be at least 1")
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    runs = 0
+    while max_runs is None or runs < max_runs:
+        snapshot = build_live_snapshot(
+            city,
+            latitude,
+            longitude,
+            target_date,
+            market_limit=market_limit,
+            include_books=include_books,
+            tag_id=tag_id,
+            slug=slug,
+            query=query,
+            pages=pages,
+        )
+        with output.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(snapshot, sort_keys=True) + "\n")
+
+        runs += 1
+        if max_runs is not None and runs >= max_runs:
+            break
+        time.sleep(interval_seconds)
+    return runs
