@@ -1,0 +1,50 @@
+{
+  "scenarios": [
+    {
+      "market": {
+        "market_id": "nyc-max-temp-2026-07-10",
+        "city": "New York",
+        "date": "2026-07-10",
+        "market_type": "max_temp",
+        "settlement_source": "NWS Central Park",
+        "measurement_unit": "F",
+        "timezone": "America/New_York",
+        "target_station_or_data_source": "KNYC",
+        "data_confidence": 0.82,
+        "forecast_disagreement": 1.0,
+        "time_to_settlement_minutes": 240,
+        "orderbook_stale": false
+      },
+      "winning_bucket": "88F",
+      "buckets": [
+        {"bucket": "86F_or_below", "price": 0.05, "shares": 1, "model_probability": 0.09, "liquidity": 20, "spread": 0.02},
+        {"bucket": "87F", "price": 0.24, "shares": 2, "model_probability": 0.30, "liquidity": 30, "spread": 0.03},
+        {"bucket": "88F", "price": 0.30, "shares": 2, "model_probability": 0.38, "liquidity": 30, "spread": 0.03},
+        {"bucket": "89F_or_higher", "price": 0.18, "shares": 1, "model_probability": 0.22, "liquidity": 30, "spread": 0.03}
+      ]
+    },
+    {
+      "market": {
+        "market_id": "nyc-max-temp-2026-07-11",
+        "city": "New York",
+        "date": "2026-07-11",
+        "market_type": "max_temp",
+        "settlement_source": "NWS Central Park",
+        "measurement_unit": "F",
+        "timezone": "America/New_York",
+        "target_station_or_data_source": "KNYC",
+        "data_confidence": 0.55,
+        "forecast_disagreement": 3.2,
+        "time_to_settlement_minutes": 240,
+        "orderbook_stale": false
+      },
+      "winning_bucket": "87F",
+      "buckets": [
+        {"bucket": "86F_or_below", "price": 0.05, "shares": 1, "model_probability": 0.09, "liquidity": 20, "spread": 0.02},
+        {"bucket": "87F", "price": 0.24, "shares": 0, "model_probability": 0.30, "liquidity": 30, "spread": 0.03},
+        {"bucket": "88F", "price": 0.30, "shares": 2, "model_probability": 0.38, "liquidity": 30, "spread": 0.03},
+        {"bucket": "89F_or_higher", "price": 0.18, "shares": 1, "model_probability": 0.22, "liquidity": 30, "spread": 0.03}
+      ]
+    }
+  ]
+}

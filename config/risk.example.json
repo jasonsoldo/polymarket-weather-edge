@@ -1,0 +1,16 @@
+{
+  "min_edge": 0.03,
+  "min_liquidity": 10.0,
+  "max_spread": 0.08,
+  "min_confidence": 0.70,
+  "max_position_per_market": 100.0,
+  "max_position_per_bucket": 50.0,
+  "max_total_exposure": 500.0,
+  "max_order_size": 25.0,
+  "max_loss_per_market": 50.0,
+  "max_daily_loss": 100.0,
+  "max_uncovered_probability": 0.08,
+  "disagreement_threshold": 2.0,
+  "stop_trading_near_settlement_minutes": 60,
+  "safety_margin": 0.01
+}

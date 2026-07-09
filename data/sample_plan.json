@@ -1,0 +1,57 @@
+{
+  "market": {
+    "market_id": "nyc-max-temp-2026-07-10",
+    "city": "New York",
+    "date": "2026-07-10",
+    "market_type": "max_temp",
+    "settlement_source": "NWS Central Park",
+    "measurement_unit": "F",
+    "timezone": "America/New_York",
+    "target_station_or_data_source": "KNYC",
+    "data_confidence": 0.82,
+    "forecast_disagreement": 1.0,
+    "time_to_settlement_minutes": 240,
+    "orderbook_stale": false,
+    "current_market_exposure": 0,
+    "current_total_exposure": 0,
+    "realized_daily_loss": 0
+  },
+  "buckets": [
+    {
+      "bucket": "86F_or_below",
+      "price": 0.05,
+      "shares": 1,
+      "model_probability": 0.09,
+      "liquidity": 20,
+      "spread": 0.02,
+      "current_position": 0
+    },
+    {
+      "bucket": "87F",
+      "price": 0.24,
+      "shares": 2,
+      "model_probability": 0.30,
+      "liquidity": 30,
+      "spread": 0.03,
+      "current_position": 0
+    },
+    {
+      "bucket": "88F",
+      "price": 0.30,
+      "shares": 2,
+      "model_probability": 0.38,
+      "liquidity": 30,
+      "spread": 0.03,
+      "current_position": 0
+    },
+    {
+      "bucket": "89F_or_higher",
+      "price": 0.18,
+      "shares": 1,
+      "model_probability": 0.22,
+      "liquidity": 30,
+      "spread": 0.03,
+      "current_position": 0
+    }
+  ]
+}
