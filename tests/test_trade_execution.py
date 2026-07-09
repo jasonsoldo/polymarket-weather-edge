@@ -3,13 +3,16 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from weather_edge.order_store import has_recent_duplicate
 from weather_edge.position_manager import load_positions
-from weather_edge.risk_manager import RiskDecision
+from weather_edge.risk_manager import RiskConfig, RiskDecision
+from weather_edge.live_pipeline import run_live_dry_run
 from weather_edge.strategy_config import StrategyConfig, load_strategy_config
 from weather_edge.strategy_planner import PlannedOrder
 from weather_edge.trade_executor import execute_trade_plan
+from weather_edge.weather_sources import WeatherSnapshot
 
 
 class TradeExecutionTests(unittest.TestCase):
@@ -62,6 +65,38 @@ class TradeExecutionTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "unknown strategy config"):
                 load_strategy_config(str(path))
+
+    def test_live_dry_run_blocks_before_buy_when_weather_confidence_is_bad(self):
+        weather = WeatherSnapshot(
+            city="New York",
+            latitude=40.7128,
+            longitude=-74.006,
+            target_date="2026-07-10",
+            forecasts=(),
+            disagreement=6.3,
+            confidence=0.25,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("weather_edge.live_pipeline.fetch_weather_snapshot", return_value=weather), patch(
+                "weather_edge.live_pipeline.fetch_weather_markets"
+            ) as fetch_markets:
+                result = run_live_dry_run(
+                    "New York",
+                    40.7128,
+                    -74.006,
+                    "2026-07-10",
+                    StrategyConfig(),
+                    RiskConfig(),
+                    str(Path(tmp) / "orders.sqlite"),
+                    str(Path(tmp) / "positions.sqlite"),
+                )
+
+        fetch_markets.assert_not_called()
+        self.assertEqual(result["recommended_action"], "NO_TRADE")
+        self.assertEqual(result["blocked_by"], "data_disagreement")
+        self.assertIn("weather data disagreement too high", result["risk_reasons"])
+        self.assertIn("confidence below min_confidence", result["risk_reasons"])
+        self.assertEqual(result["results"], [])
 
 
 def _allowed_plan():

@@ -24,8 +24,28 @@ def run_live_dry_run(
     slug: str = "",
     query: str = "",
     pages: int = 2,
+    include_broad_weather: bool = False,
 ) -> dict:
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
+    weather_block = _weather_block(weather, risk)
+    if weather_block:
+        return {
+            "mode": strategy.execution_mode,
+            "live_trading_enabled": strategy.live_trading_enabled,
+            "city": city,
+            "target_date": target_date,
+            "weather": weather.to_dict(),
+            "markets_found": 0,
+            "results": [],
+            **weather_block,
+            "safety": [
+                "NO_TRADE",
+                "private key alone does not enable live trading",
+                "execution_mode must be live and LIVE_TRADING_ENABLED env must equal true for live path",
+                "live path uses official py-clob-client only when installed and explicitly enabled",
+            ],
+        }
+
     markets = fetch_weather_markets(
         market_limit,
         city=city,
@@ -33,6 +53,7 @@ def run_live_dry_run(
         slug=slug,
         query=query,
         pages=pages,
+        include_broad_weather=include_broad_weather,
     )
 
     rows = []
@@ -80,6 +101,28 @@ def run_live_dry_run(
             "execution_mode must be live and LIVE_TRADING_ENABLED env must equal true for live path",
             "live path uses official py-clob-client only when installed and explicitly enabled",
         ],
+    }
+
+
+def _weather_block(weather, risk: RiskConfig) -> dict:
+    reasons = []
+    disagreement = weather.disagreement or 0.0
+    if disagreement > risk.disagreement_threshold:
+        reasons.append("weather data disagreement too high")
+    if weather.confidence < risk.min_confidence:
+        reasons.append("confidence below min_confidence")
+    if not reasons:
+        return {}
+    return {
+        "recommended_action": "NO_TRADE",
+        "blocked_by": "data_disagreement",
+        "risk_reasons": ["NO_TRADE"] + reasons,
+        "disagreement": disagreement,
+        "confidence": weather.confidence,
+        "threshold": {
+            "max_allowed_weather_disagreement": risk.disagreement_threshold,
+            "min_confidence": risk.min_confidence,
+        },
     }
 
 

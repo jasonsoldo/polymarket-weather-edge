@@ -22,6 +22,7 @@ def build_live_snapshot(
     slug: str = "",
     query: str = "",
     pages: int = 3,
+    include_broad_weather: bool = False,
 ) -> dict:
     markets = fetch_weather_markets(
         market_limit,
@@ -30,6 +31,7 @@ def build_live_snapshot(
         slug=slug,
         query=query,
         pages=pages,
+        include_broad_weather=include_broad_weather,
     )
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
     market_rows = []
@@ -57,6 +59,7 @@ def build_live_snapshot(
         "target_date": target_date,
         "weather": weather.to_dict(),
         "markets_found": len(market_rows),
+        "reason": "no strict city temperature markets found" if not market_rows and city and not include_broad_weather else "",
         "markets": market_rows,
         "notes": [
             "read_only_snapshot",
@@ -81,6 +84,7 @@ def run_live_monitor_loop(
     slug: str = "",
     query: str = "",
     pages: int = 3,
+    include_broad_weather: bool = False,
     max_runs: Optional[int] = None,
 ) -> int:
     if interval_seconds < 1:
@@ -101,6 +105,7 @@ def run_live_monitor_loop(
             slug=slug,
             query=query,
             pages=pages,
+            include_broad_weather=include_broad_weather,
         )
         with output.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(snapshot, sort_keys=True) + "\n")

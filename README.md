@@ -41,6 +41,8 @@ Read-only live data smoke tests:
 ```powershell
 python -m weather_edge.cli live-tags
 python -m weather_edge.cli live-markets --limit 20 --pages 5
+python -m weather_edge.cli live-markets --city "New York" --limit 100 --pages 5
+python -m weather_edge.cli live-markets --city "New York" --limit 100 --pages 5 --include-broad-weather
 python -m weather_edge.cli live-weather --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10
 python -m weather_edge.cli live-monitor --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --limit 20 --pages 5
 python -m weather_edge.cli live-monitor-loop --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --output logs/live_monitor.jsonl --interval 300 --limit 20 --pages 2 --max-runs 1
@@ -57,6 +59,21 @@ python -m weather_edge.cli live-markets --slug POLYMARKET_EVENT_OR_MARKET_SLUG
 pagination where possible, caps page size at 100, and can filter by tag, slug,
 city, or query text. Current live data commands are read-only and do not create
 orders.
+
+By default, `live-markets` uses a strict city daily temperature filter. It does
+not return broad climate, sea ice, disease, politics, election, or other
+non-city-temperature markets as substitutes. Use `--include-broad-weather` only
+when intentionally auditing broad weather-tagged markets.
+
+If weather sources disagree too much or confidence is too low, `live-dry-run`
+returns:
+
+```text
+recommended_action = NO_TRADE
+blocked_by = data_disagreement
+```
+
+and does not generate BUY recommendations.
 
 `live-dry-run` uses real market/weather/orderbook data but records simulated
 orders and simulated positions only. Supplying `POLYMARKET_PRIVATE_KEY` does not

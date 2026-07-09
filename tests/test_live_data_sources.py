@@ -52,6 +52,61 @@ class LiveDataSourceParsingTests(unittest.TestCase):
         self.assertEqual(markets[0].outcome_prices[2], 0.30)
         self.assertEqual(markets[0].token_ids[2], "token-3")
         self.assertEqual(markets[0].resolution_source, "NWS")
+        self.assertTrue(markets[0].is_temperature_market)
+        self.assertEqual(markets[0].excluded_reason, "")
+        self.assertIn("high temperature", markets[0].matched_keywords)
+        self.assertGreater(markets[0].city_match_score, 0)
+        self.assertEqual(markets[0].market_type_guess, "high_temp")
+
+    def test_strict_filter_excludes_broad_weather_and_non_weather_markets(self):
+        def fake_get_json(url, params=None, timeout=20):
+            if url.endswith("/tags"):
+                return [{"id": "10", "label": "Weather", "slug": "weather"}]
+            return {
+                "events": [
+                    {
+                        "id": "event-1",
+                        "slug": "weather-and-climate",
+                        "title": "Climate markets",
+                        "active": True,
+                        "closed": False,
+                        "tags": [{"label": "Weather", "slug": "weather"}],
+                        "markets": [
+                            {
+                                "id": "market-1",
+                                "slug": "arctic-sea-ice-extent-2026",
+                                "question": "Arctic sea ice extent in 2026?",
+                                "description": "Climate change long-term market",
+                                "outcomes": '["Yes","No"]',
+                                "outcomePrices": '["0.5","0.5"]',
+                                "clobTokenIds": '["token-1","token-2"]',
+                                "active": True,
+                                "closed": False,
+                            },
+                            {
+                                "id": "market-2",
+                                "slug": "measles-cases-in-us-in-2026",
+                                "question": "Measles cases in US in 2026?",
+                                "description": "Disease market",
+                                "outcomes": '["Yes","No"]',
+                                "outcomePrices": '["0.5","0.5"]',
+                                "clobTokenIds": '["token-3","token-4"]',
+                                "active": True,
+                                "closed": False,
+                            },
+                        ],
+                    }
+                ],
+                "next_cursor": "",
+            }
+
+        with patch("weather_edge.market_scanner.get_json", side_effect=fake_get_json):
+            strict = fetch_weather_markets(limit=10, city="New York")
+            broad = fetch_weather_markets(limit=10, include_broad_weather=True)
+
+        self.assertEqual(strict, [])
+        self.assertEqual(len(broad), 1)
+        self.assertEqual(broad[0].excluded_reason, "arctic sea ice")
 
     def test_discover_weather_tags_finds_weather_label(self):
         with patch(

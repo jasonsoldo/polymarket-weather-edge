@@ -82,4 +82,9 @@ def _market():
         tags=("Weather",),
         city_guess="New York",
         discovery_source="test",
+        is_temperature_market=True,
+        excluded_reason="",
+        matched_keywords=("high temperature",),
+        city_match_score=2,
+        market_type_guess="high_temp",
     )

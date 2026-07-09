@@ -43,6 +43,7 @@ def main(argv=None) -> int:
     markets_parser.add_argument("--slug", default="")
     markets_parser.add_argument("--query", default="")
     markets_parser.add_argument("--pages", type=int, default=3)
+    markets_parser.add_argument("--include-broad-weather", action="store_true")
 
     sub.add_parser("live-tags")
 
@@ -63,6 +64,7 @@ def main(argv=None) -> int:
     monitor_parser.add_argument("--slug", default="")
     monitor_parser.add_argument("--query", default="")
     monitor_parser.add_argument("--pages", type=int, default=3)
+    monitor_parser.add_argument("--include-broad-weather", action="store_true")
 
     monitor_loop_parser = sub.add_parser("live-monitor-loop")
     monitor_loop_parser.add_argument("--city", required=True)
@@ -77,6 +79,7 @@ def main(argv=None) -> int:
     monitor_loop_parser.add_argument("--slug", default="")
     monitor_loop_parser.add_argument("--query", default="")
     monitor_loop_parser.add_argument("--pages", type=int, default=3)
+    monitor_loop_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_loop_parser.add_argument("--max-runs", type=int)
 
     dry_run_parser = sub.add_parser("live-dry-run")
@@ -93,6 +96,7 @@ def main(argv=None) -> int:
     dry_run_parser.add_argument("--slug", default="")
     dry_run_parser.add_argument("--query", default="")
     dry_run_parser.add_argument("--pages", type=int, default=2)
+    dry_run_parser.add_argument("--include-broad-weather", action="store_true")
 
     args = parser.parse_args(argv)
 
@@ -142,9 +146,13 @@ def main(argv=None) -> int:
                 slug=args.slug,
                 query=args.query,
                 pages=args.pages,
+                include_broad_weather=args.include_broad_weather,
             )
         ]
-        print(json.dumps({"markets_found": len(markets), "markets": markets}, indent=2))
+        payload = {"markets_found": len(markets), "markets": markets}
+        if not markets and args.city and not args.include_broad_weather:
+            payload["reason"] = "no strict city temperature markets found"
+        print(json.dumps(payload, indent=2))
         return 0
 
     if args.command == "live-tags":
@@ -173,6 +181,7 @@ def main(argv=None) -> int:
             slug=args.slug,
             query=args.query,
             pages=args.pages,
+            include_broad_weather=args.include_broad_weather,
         )
         print(json.dumps(snapshot, indent=2))
         return 0
@@ -191,6 +200,7 @@ def main(argv=None) -> int:
             slug=args.slug,
             query=args.query,
             pages=args.pages,
+            include_broad_weather=args.include_broad_weather,
             max_runs=args.max_runs,
         )
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
@@ -213,6 +223,7 @@ def main(argv=None) -> int:
             slug=args.slug,
             query=args.query,
             pages=args.pages,
+            include_broad_weather=args.include_broad_weather,
         )
         print(json.dumps(result, indent=2))
         return 0

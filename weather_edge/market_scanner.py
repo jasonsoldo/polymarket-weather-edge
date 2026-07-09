@@ -1,6 +1,6 @@
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Optional
 
 from .http_client import get_json
@@ -21,6 +21,57 @@ WEATHER_PATTERNS = (
     r"\brain\b",
     r"\bsnow\b",
 )
+STRICT_TEMPERATURE_KEYWORDS = (
+    "temperature",
+    "high temperature",
+    "low temperature",
+    "hottest",
+    "coldest",
+    "degrees",
+    "°f",
+    "°c",
+    "daily high",
+    "daily low",
+    "what will the high be",
+    "what will the low be",
+)
+EXCLUDED_BROAD_MARKET_KEYWORDS = (
+    "global temperature index",
+    "hottest year on record",
+    "arctic sea ice",
+    "sea ice extent",
+    "measles",
+    "earthquake",
+    "government shutdown",
+    "climate change",
+    "politics",
+    "election",
+    "pandemic",
+    "disease",
+)
+BROAD_WEATHER_ALLOWED_KEYWORDS = (
+    "global temperature index",
+    "hottest year on record",
+    "arctic sea ice",
+    "sea ice extent",
+    "climate change",
+    "earthquake",
+)
+ALWAYS_EXCLUDED_KEYWORDS = (
+    "measles",
+    "government shutdown",
+    "politics",
+    "election",
+    "pandemic",
+    "disease",
+)
+CITY_ALIASES = {
+    "new york": ("new york", "nyc", "manhattan", "central park", "knyc", "lga", "jfk"),
+    "chicago": ("chicago", "ord", "mdw", "kord", "midway"),
+    "austin": ("austin", "kaus"),
+    "miami": ("miami", "kmia"),
+    "los angeles": ("los angeles", "la ", "lax", "klax", "downtown los angeles"),
+}
 
 
 @dataclass(frozen=True)
@@ -53,6 +104,11 @@ class WeatherMarket:
     tags: tuple[str, ...]
     city_guess: str
     discovery_source: str
+    is_temperature_market: bool
+    excluded_reason: str
+    matched_keywords: tuple[str, ...]
+    city_match_score: int
+    market_type_guess: str
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -84,12 +140,13 @@ def fetch_weather_markets(
     slug: str = "",
     query: str = "",
     pages: int = 3,
+    include_broad_weather: bool = False,
 ) -> list[WeatherMarket]:
     if slug:
         return [
-            market
+            _with_filter_metadata(market, city)
             for market in fetch_markets_by_slug(slug)
-            if _is_weather_market(market, city, allow_query=query)
+            if _include_market(market, city, query, include_broad_weather)
         ][:limit]
 
     discovered_tag_id = tag_id or _first_weather_tag_id()
@@ -120,8 +177,8 @@ def fetch_weather_markets(
         if market.market_id in seen:
             continue
         seen.add(market.market_id)
-        if _is_weather_market(market, city, allow_query=query):
-            filtered.append(market)
+        if _include_market(market, city, query, include_broad_weather):
+            filtered.append(_with_filter_metadata(market, city))
         if len(filtered) >= limit:
             break
     return filtered
@@ -200,15 +257,24 @@ def _parse_market(event: dict[str, Any], market: dict[str, Any], discovery_sourc
         return None
 
     condition_id = str(market.get("conditionId") or market.get("condition_id") or "")
+    base = {
+        "event_title": str(event.get("title") or event.get("question") or ""),
+        "question": str(market.get("question") or ""),
+        "description": str(market.get("description") or event.get("description") or ""),
+        "event_slug": str(event.get("slug") or ""),
+        "market_slug": str(market.get("slug") or ""),
+        "tags": tuple(_tag_names(event, market)),
+    }
+    analysis = _analyze_market_text(base, "")
     return WeatherMarket(
         event_id=str(event.get("id") or market.get("eventId") or ""),
-        event_slug=str(event.get("slug") or ""),
-        event_title=str(event.get("title") or event.get("question") or ""),
+        event_slug=base["event_slug"],
+        event_title=base["event_title"],
         market_id=str(market.get("id") or condition_id),
         condition_id=condition_id,
-        market_slug=str(market.get("slug") or ""),
-        question=str(market.get("question") or ""),
-        description=str(market.get("description") or event.get("description") or ""),
+        market_slug=base["market_slug"],
+        question=base["question"],
+        description=base["description"],
         end_date=str(market.get("endDate") or event.get("endDate") or ""),
         active=bool(market.get("active", event.get("active", False))),
         closed=bool(market.get("closed", event.get("closed", False))),
@@ -216,9 +282,14 @@ def _parse_market(event: dict[str, Any], market: dict[str, Any], discovery_sourc
         outcome_prices=prices,
         token_ids=token_ids,
         resolution_source=str(market.get("resolutionSource") or event.get("resolutionSource") or ""),
-        tags=tuple(_tag_names(event, market)),
+        tags=base["tags"],
         city_guess=_guess_city(event, market),
         discovery_source=discovery_source,
+        is_temperature_market=analysis["is_temperature_market"],
+        excluded_reason=analysis["excluded_reason"],
+        matched_keywords=tuple(analysis["matched_keywords"]),
+        city_match_score=analysis["city_match_score"],
+        market_type_guess=analysis["market_type_guess"],
     )
 
 
@@ -230,9 +301,50 @@ def _first_weather_tag_id() -> str:
     return tags[0].id if tags else ""
 
 
-def _is_weather_market(market: WeatherMarket, city: str, allow_query: str = "") -> bool:
+def _include_market(market: WeatherMarket, city: str, query: str, include_broad_weather: bool) -> bool:
     if not market.active or market.closed:
         return False
+    analysis = _analyze_market_text(
+        {
+            "event_title": market.event_title,
+            "question": market.question,
+            "description": market.description,
+            "event_slug": market.event_slug,
+            "market_slug": market.market_slug,
+            "tags": market.tags,
+        },
+        city,
+    )
+    if query and query.lower() not in _market_haystack(market):
+        return False
+    if include_broad_weather:
+        return _is_broad_weather_market(market)
+    return analysis["is_temperature_market"] and not analysis["excluded_reason"] and (not city or analysis["city_match_score"] > 0)
+
+
+def _with_filter_metadata(market: WeatherMarket, city: str) -> WeatherMarket:
+    analysis = _analyze_market_text(
+        {
+            "event_title": market.event_title,
+            "question": market.question,
+            "description": market.description,
+            "event_slug": market.event_slug,
+            "market_slug": market.market_slug,
+            "tags": market.tags,
+        },
+        city,
+    )
+    return replace(
+        market,
+        is_temperature_market=analysis["is_temperature_market"],
+        excluded_reason=analysis["excluded_reason"],
+        matched_keywords=tuple(analysis["matched_keywords"]),
+        city_match_score=analysis["city_match_score"],
+        market_type_guess=analysis["market_type_guess"],
+    )
+
+
+def _is_broad_weather_market(market: WeatherMarket) -> bool:
     haystack = " ".join(
         [
             market.event_title,
@@ -243,11 +355,78 @@ def _is_weather_market(market: WeatherMarket, city: str, allow_query: str = "") 
             " ".join(market.tags),
         ]
     ).lower()
-    if city and city.lower() not in haystack:
+    if any(keyword in haystack for keyword in ALWAYS_EXCLUDED_KEYWORDS):
         return False
-    if allow_query and allow_query.lower() not in haystack:
-        return False
-    return any(re.search(pattern, haystack) for pattern in WEATHER_PATTERNS)
+    return any(re.search(pattern, haystack) for pattern in WEATHER_PATTERNS) or any(
+        keyword in haystack for keyword in BROAD_WEATHER_ALLOWED_KEYWORDS
+    )
+
+
+def _analyze_market_text(parts: dict, city: str) -> dict:
+    haystack = _parts_haystack(parts)
+    matched = [keyword for keyword in STRICT_TEMPERATURE_KEYWORDS if keyword in haystack]
+    excluded = next((keyword for keyword in EXCLUDED_BROAD_MARKET_KEYWORDS if keyword in haystack), "")
+    city_score = _city_match_score(haystack, city)
+    market_type = _market_type_guess(haystack, tuple(parts.get("tags") or ()))
+    is_temperature = bool(matched) and market_type != "non_temperature"
+    return {
+        "is_temperature_market": is_temperature,
+        "excluded_reason": excluded,
+        "matched_keywords": matched,
+        "city_match_score": city_score,
+        "market_type_guess": market_type,
+    }
+
+
+def _market_haystack(market: WeatherMarket) -> str:
+    return _parts_haystack(
+        {
+            "event_title": market.event_title,
+            "question": market.question,
+            "description": market.description,
+            "event_slug": market.event_slug,
+            "market_slug": market.market_slug,
+            "tags": market.tags,
+        }
+    )
+
+
+def _parts_haystack(parts: dict) -> str:
+    return " ".join(
+        [
+            str(parts.get("event_title") or ""),
+            str(parts.get("question") or ""),
+            str(parts.get("description") or ""),
+            str(parts.get("event_slug") or ""),
+            str(parts.get("market_slug") or ""),
+            " ".join(str(tag) for tag in parts.get("tags") or ()),
+        ]
+    ).lower()
+
+
+def _city_match_score(haystack: str, city: str) -> int:
+    if not city:
+        return 0
+    aliases = CITY_ALIASES.get(city.lower(), (city.lower(),))
+    score = 0
+    for alias in aliases:
+        if alias.strip() and alias in haystack:
+            score += 2 if alias == city.lower() else 1
+    return score
+
+
+def _market_type_guess(haystack: str, tags: tuple[str, ...]) -> str:
+    if any(keyword in haystack for keyword in EXCLUDED_BROAD_MARKET_KEYWORDS):
+        return "non_temperature"
+    if "low temperature" in haystack or "daily low" in haystack or "what will the low be" in haystack or "coldest" in haystack:
+        return "low_temp"
+    if "high temperature" in haystack or "daily high" in haystack or "what will the high be" in haystack or "hottest" in haystack:
+        return "high_temp"
+    if "temperature" in haystack or "degrees" in haystack or "°f" in haystack or "°c" in haystack:
+        if "range" in haystack or "-" in haystack:
+            return "range_bucket"
+        return "exact_bucket"
+    return "non_temperature"
 
 
 def _guess_city(event: dict[str, Any], market: dict[str, Any]) -> str:
