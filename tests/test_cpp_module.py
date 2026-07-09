@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import tempfile
@@ -32,8 +33,20 @@ class CppModuleTests(unittest.TestCase):
                 [str(exe), "data/sample_buckets.csv"],
                 check=True,
                 capture_output=True,
+                env=_mingw_runtime_env(compiler),
                 text=True,
             )
 
         self.assertIn("bucket,price,shares,cost,model_probability,edge,pnl_if_wins", result.stdout)
         self.assertIn("88F,0.300000,2.000000,0.600000,0.380000,0.080000,0.690000", result.stdout)
+
+
+def _mingw_runtime_env(compiler):
+    env = os.environ.copy()
+    compiler_path = Path(compiler).resolve()
+    install_bin = Path("C:/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin")
+    candidates = [compiler_path.parent]
+    if install_bin.exists():
+        candidates.append(install_bin)
+    env["PATH"] = os.pathsep.join(str(path) for path in candidates) + os.pathsep + env["PATH"]
+    return env
