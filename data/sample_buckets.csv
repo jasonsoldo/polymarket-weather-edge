@@ -1,0 +1,5 @@
+bucket,price,shares,model_probability
+86F_or_below,0.05,1,0.09
+87F,0.24,2,0.30
+88F,0.30,2,0.38
+89F_or_higher,0.18,1,0.22

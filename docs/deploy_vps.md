@@ -8,7 +8,7 @@ tested.
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git python3 python3-venv
+sudo apt-get install -y git python3 python3-venv build-essential cmake
 git clone https://github.com/YOUR_USER/YOUR_REPO.git
 cd YOUR_REPO
 python3 -m venv .venv
@@ -16,6 +16,9 @@ python3 -m venv .venv
 pip install -r requirements.txt
 python -m unittest discover -s tests -v
 python -m weather_edge.cli backtest --file data/sample_backtest.json --config config/risk.example.json
+cmake -S cpp/pnl_curve_engine -B build/pnl_curve_engine
+cmake --build build/pnl_curve_engine
+./build/pnl_curve_engine/pnl_curve_engine data/sample_buckets.csv
 ```
 
 ## Keep a Simulation Process Running

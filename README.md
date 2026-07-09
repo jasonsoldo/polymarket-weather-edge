@@ -16,6 +16,7 @@ simulation/backtest runner.
 - JSON-file backtest mode
 - SQLite analysis log
 - VPS-friendly Python CLI
+- C++ PnL curve engine source for performance-sensitive calculation
 
 No live Polymarket order is sent by the current code.
 
@@ -26,6 +27,14 @@ python -m unittest discover -s tests -v
 python -m weather_edge.cli analyze --plan data/sample_plan.json --config config/risk.example.json
 python -m weather_edge.cli simulate --plan data/sample_plan.json --winning-bucket 88F --config config/risk.example.json
 python -m weather_edge.cli backtest --file data/sample_backtest.json --config config/risk.example.json
+```
+
+Optional C++ PnL engine build on a machine with CMake:
+
+```bash
+cmake -S cpp/pnl_curve_engine -B build/pnl_curve_engine
+cmake --build build/pnl_curve_engine
+./build/pnl_curve_engine/pnl_curve_engine data/sample_buckets.csv
 ```
 
 Optional SQLite log:
@@ -84,9 +93,12 @@ weather_edge/
   backtest.py       JSON scenario backtest runner
   storage.py        SQLite analysis log
   cli.py            Command line entrypoint
+cpp/
+  pnl_curve_engine/ C++ bucket PnL calculator; no order execution
 data/
   sample_plan.json
   sample_backtest.json
+  sample_buckets.csv
 config/
   risk.example.json
 docs/
