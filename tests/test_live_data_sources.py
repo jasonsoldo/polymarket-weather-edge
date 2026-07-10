@@ -4,10 +4,16 @@ from unittest.mock import patch
 from weather_edge.market_scanner import discover_weather_tags, fetch_weather_markets
 from weather_edge.city_registry import match_city
 from weather_edge.orderbook import fetch_book_summary
-from weather_edge.weather_sources import fetch_weather_snapshot
+from weather_edge.weather_sources import fetch_hko_forecast, fetch_weather_snapshot
 
 
 class LiveDataSourceParsingTests(unittest.TestCase):
+    def test_hko_forecast_reads_official_daily_high_low(self):
+        with patch("weather_edge.weather_sources.get_json", return_value={"updateTime": "2026-07-10T11:30:00+08:00", "weatherForecast": [{"forecastDate": "20260710", "forecastMaxtemp": {"value": 32, "unit": "C"}, "forecastMintemp": {"value": 27, "unit": "C"}}]}):
+            forecast = fetch_hko_forecast("Hong Kong", "2026-07-10")
+        self.assertEqual(forecast.source, "hko_forecast")
+        self.assertEqual(forecast.max_temp, 32.0)
+        self.assertEqual(forecast.min_temp, 27.0)
     def test_city_alias_matching_does_not_turn_unrelated_text_into_los_angeles(self):
         item, alias = match_city("Will the highest temperature in Hong Kong be 26C or below")
         self.assertEqual(item["name"], "Hong Kong")

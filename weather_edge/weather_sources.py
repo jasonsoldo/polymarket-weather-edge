@@ -8,6 +8,7 @@ from .http_client import get_json
 OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast"
 NWS_API = "https://api.weather.gov"
 METOFFICE_DAILY_API = "https://data.hub.api.metoffice.gov.uk/sitespecific/v0/point/daily"
+HKO_FORECAST_API = "https://data.weather.gov.hk/weatherAPI/opendata/weather.php"
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,9 @@ def fetch_weather_snapshot(
     unit: str = "fahrenheit",
 ) -> WeatherSnapshot:
     forecasts = [fetch_open_meteo(latitude, longitude, target_date, unit)]
+    hko = fetch_hko_forecast(city, target_date)
+    if hko:
+        forecasts.append(hko)
     nws = fetch_nws(latitude, longitude, target_date)
     if nws:
         forecasts.append(nws)
@@ -88,6 +92,23 @@ def fetch_weather_snapshot(
         disagreement=disagreement,
         confidence=confidence,
     )
+
+
+def fetch_hko_forecast(city: str, target_date: str) -> Optional[DailyForecast]:
+    if city.strip().lower() not in {"hong kong", "hko"}:
+        return None
+    try:
+        data = get_json(HKO_FORECAST_API, {"dataType": "fnd", "lang": "en"})
+        item = next((row for row in data.get("weatherForecast", []) if str(row.get("forecastDate", "")) == target_date.replace("-", "")), None)
+        if not item:
+            return None
+        maximum = ((item.get("forecastMaxtemp") or {}).get("value"))
+        minimum = ((item.get("forecastMintemp") or {}).get("value"))
+        if maximum is None or minimum is None:
+            return None
+        return DailyForecast("hko_forecast", target_date, float(maximum), float(minimum), "C", str(data.get("updateTime") or ""), "Hong Kong Observatory", "Asia/Hong_Kong", "hko_9day_forecast", "HKO")
+    except (KeyError, TypeError, ValueError, RuntimeError):
+        return None
 
 
 def fetch_weatherapi(latitude: float, longitude: float, target_date: str, unit: str = "fahrenheit") -> Optional[DailyForecast]:
