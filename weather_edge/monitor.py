@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import Optional
 
 from .event_bucket_analysis import build_event_trade_plan, group_event_markets
+from .alert_manager import emit_alerts
 from .http_client import get_json
 from .history_store import save_monitor_snapshot
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
+from .portfolio import portfolio_snapshot
 from .risk_manager import RiskConfig, weather_data_block
 from .settlement_source import fetch_settlement_observation
 from .strategy_config import StrategyConfig
@@ -87,6 +89,7 @@ def build_live_snapshot(
         "city": city,
         "target_date": target_date,
         "weather": weather.to_dict(),
+        "portfolio": portfolio_snapshot("data/positions.sqlite"),
         "risk_capital_limit": RiskConfig().max_total_exposure,
         "markets_found": len(market_rows),
         "reason": "no strict city temperature markets found" if not market_rows and city and not include_broad_weather else "",
@@ -185,6 +188,7 @@ def run_live_monitor_loop(
     include_broad_weather: bool = False,
     max_runs: Optional[int] = None,
     history_db: str = "",
+    alerts_log: str = "",
 ) -> int:
     if interval_seconds < 1:
         raise ValueError("interval_seconds must be at least 1")
@@ -210,6 +214,8 @@ def run_live_monitor_loop(
             handle.write(json.dumps(snapshot, sort_keys=True) + "\n")
         if history_db:
             save_monitor_snapshot(history_db, snapshot)
+        if alerts_log:
+            emit_alerts(snapshot, alerts_log)
 
         runs += 1
         if max_runs is not None and runs >= max_runs:
@@ -228,6 +234,7 @@ def run_all_cities_monitor_loop(
     include_broad_weather: bool = False,
     max_runs: Optional[int] = None,
     history_db: str = "",
+    alerts_log: str = "",
 ) -> int:
     if interval_seconds < 1:
         raise ValueError("interval_seconds must be at least 1")
@@ -247,6 +254,8 @@ def run_all_cities_monitor_loop(
             handle.write(json.dumps(snapshot, sort_keys=True) + "\n")
         if history_db:
             save_monitor_snapshot(history_db, snapshot)
+        if alerts_log:
+            emit_alerts(snapshot, alerts_log)
 
         runs += 1
         if max_runs is not None and runs >= max_runs:

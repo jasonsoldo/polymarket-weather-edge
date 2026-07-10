@@ -37,7 +37,7 @@ class WebMonitorTests(unittest.TestCase):
 
         self.assertIn("WeatherEdge Monitor", html)
         self.assertIn("NO_TRADE", html)
-        self.assertIn("Real Weather Market Monitor", html)
+        self.assertIn("Real Weather Markets", html)
         self.assertNotIn("Raw Snapshot", html)
 
     def test_render_dashboard_shows_event_bucket_pnl_and_death_gap(self):
@@ -68,9 +68,9 @@ class WebMonitorTests(unittest.TestCase):
 
         html = render_dashboard(snapshot, [])
 
-        self.assertIn("Real Weather Market Monitor", html)
+        self.assertIn("Real Weather Markets", html)
         self.assertIn("highest-temperature-in-hong-kong", html)
-        self.assertIn("Planned Investment", html)
+        self.assertIn("Investment", html)
         self.assertIn("Maximum Loss", html)
         self.assertIn("500.00", html)
         self.assertIn("27.40C", html)
@@ -106,7 +106,7 @@ class WebMonitorTests(unittest.TestCase):
         html = render_dashboard(snapshot, [snapshot])
 
         self.assertIn("WeatherEdge All Cities Monitor", html)
-        self.assertIn("Real Weather Market Monitor", html)
+        self.assertIn("Real Weather Markets", html)
         self.assertNotIn("Global Strict Temperature Markets", html)
 
     def test_all_cities_dashboard_shows_city_bucket_curve(self):
@@ -127,7 +127,7 @@ class WebMonitorTests(unittest.TestCase):
 
         html = render_dashboard(snapshot, [])
 
-        self.assertIn("Real Weather Market Monitor", html)
+        self.assertIn("Real Weather Markets", html)
         self.assertIn("27°C", html)
 
 

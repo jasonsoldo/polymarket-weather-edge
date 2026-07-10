@@ -82,6 +82,7 @@ def main(argv=None) -> int:
     monitor_loop_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_loop_parser.add_argument("--max-runs", type=int)
     monitor_loop_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    monitor_loop_parser.add_argument("--alerts-log", default="logs/alerts.jsonl")
 
     monitor_all_parser = sub.add_parser("live-monitor-all")
     monitor_all_parser.add_argument("--date", required=True)
@@ -93,6 +94,7 @@ def main(argv=None) -> int:
     monitor_all_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_all_parser.add_argument("--max-runs", type=int)
     monitor_all_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    monitor_all_parser.add_argument("--alerts-log", default="logs/alerts.jsonl")
 
     web_monitor_parser = sub.add_parser("web-monitor")
     web_monitor_parser.add_argument("--host", default="127.0.0.1")
@@ -130,6 +132,14 @@ def main(argv=None) -> int:
     dry_run_parser.add_argument("--query", default="")
     dry_run_parser.add_argument("--pages", type=int, default=2)
     dry_run_parser.add_argument("--include-broad-weather", action="store_true")
+
+    portfolio_parser = sub.add_parser("portfolio")
+    portfolio_parser.add_argument("--positions-db", default="data/positions.sqlite")
+
+    exit_parser = sub.add_parser("exit-dry-run")
+    exit_parser.add_argument("--positions-db", default="data/positions.sqlite")
+    exit_parser.add_argument("--orders-db", default="data/orders.sqlite")
+    exit_parser.add_argument("--reason", default="manual_protective_exit")
 
     args = parser.parse_args(argv)
 
@@ -236,6 +246,7 @@ def main(argv=None) -> int:
             include_broad_weather=args.include_broad_weather,
             max_runs=args.max_runs,
             history_db=args.history_db,
+            alerts_log=args.alerts_log,
         )
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
         return 0
@@ -251,6 +262,7 @@ def main(argv=None) -> int:
             include_broad_weather=args.include_broad_weather,
             max_runs=args.max_runs,
             history_db=args.history_db,
+            alerts_log=args.alerts_log,
         )
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
         return 0
@@ -306,6 +318,25 @@ def main(argv=None) -> int:
             include_broad_weather=args.include_broad_weather,
         )
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "portfolio":
+        from .portfolio import portfolio_snapshot
+
+        print(json.dumps(portfolio_snapshot(args.positions_db), indent=2))
+        return 0
+
+    if args.command == "exit-dry-run":
+        from .exit_manager import build_protective_exit_plan
+        from .orderbook import fetch_book_summary
+        from .position_manager import load_positions
+        from .trade_executor import execute_trade_plan
+
+        positions = load_positions(args.positions_db)
+        books = {position.token_id: fetch_book_summary(position.token_id) for position in positions}
+        plan = build_protective_exit_plan(positions, books, args.reason)
+        executions = execute_trade_plan(plan, StrategyConfig(), args.orders_db, args.positions_db)
+        print(json.dumps({"plan": plan.to_dict(), "executions": [item.to_dict() for item in executions]}, indent=2))
         return 0
 
     return 1

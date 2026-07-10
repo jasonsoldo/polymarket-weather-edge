@@ -2,7 +2,7 @@ import os
 from dataclasses import asdict, dataclass
 
 from .order_store import StoredOrder, has_recent_duplicate, make_client_order_id, save_order
-from .position_manager import Position, upsert_position
+from .position_manager import Position, reduce_position, upsert_position
 from .strategy_config import StrategyConfig
 from .strategy_planner import PlannedOrder, TradePlan
 
@@ -96,8 +96,10 @@ def _record_dry_run(
         orders_db,
         StoredOrder(client_order_id, order.market_id, order.token_id, order.bucket, order.side, order.price, order.size, "dry_run_filled", order.to_dict()),
     )
-    if filled > 0:
+    if filled > 0 and order.side == BUY:
         upsert_position(positions_db, Position(order.market_id, order.token_id, order.bucket, filled, order.price))
+    elif filled > 0 and order.side == "SELL":
+        filled = reduce_position(positions_db, order.market_id, order.token_id, filled)
     return ExecutionResult(client_order_id, order.token_id, order.bucket, order.size, filled, order.price, "dry_run_filled", "simulation_only_no_order_sent")
 
 
@@ -120,7 +122,7 @@ def _post_live_order(order: PlannedOrder, strategy: StrategyConfig) -> dict:
     private_key = os.environ[strategy.private_key_env]
     client = ClobClient("https://clob.polymarket.com", key=private_key, chain_id=POLYGON)
     client.set_api_creds(client.create_or_derive_api_creds())
-    order_args = OrderArgs(price=order.price, size=order.size, side=BUY, token_id=order.token_id)
+    order_args = OrderArgs(price=order.price, size=order.size, side=order.side, token_id=order.token_id)
     signed_order = client.create_order(order_args)
     response = client.post_order(signed_order)
     return response if isinstance(response, dict) else {"response": str(response)}

@@ -74,3 +74,22 @@ def upsert_position(path: str, position: Position) -> None:
                 "INSERT INTO positions (market_id, token_id, bucket, shares, avg_price) VALUES (?, ?, ?, ?, ?)",
                 (position.market_id, position.token_id, position.bucket, position.shares, position.avg_price),
             )
+
+
+def reduce_position(path: str, market_id: str, token_id: str, shares: float) -> float:
+    if shares <= 0:
+        return 0.0
+    init_positions_db(path)
+    with sqlite3.connect(path) as conn:
+        row = conn.execute(
+            "SELECT shares FROM positions WHERE market_id = ? AND token_id = ?", (market_id, token_id)
+        ).fetchone()
+        if not row:
+            return 0.0
+        filled = min(float(row[0]), shares)
+        remaining = float(row[0]) - filled
+        if remaining <= 0:
+            conn.execute("DELETE FROM positions WHERE market_id = ? AND token_id = ?", (market_id, token_id))
+        else:
+            conn.execute("UPDATE positions SET shares = ? WHERE market_id = ? AND token_id = ?", (remaining, market_id, token_id))
+    return filled
