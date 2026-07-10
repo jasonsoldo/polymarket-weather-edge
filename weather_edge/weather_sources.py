@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass, asdict
+from datetime import date
 from typing import Optional
 
 from .http_client import get_json
@@ -57,6 +58,8 @@ def fetch_weather_snapshot(
     target_date: str,
     unit: str = "fahrenheit",
 ) -> WeatherSnapshot:
+    if target_date.strip().lower() == "today":
+        target_date = date.today().isoformat()
     forecasts = [fetch_open_meteo(latitude, longitude, target_date, unit)]
     hko = fetch_hko_forecast(city, target_date)
     if hko:
