@@ -7,6 +7,7 @@ from .http_client import get_json
 
 OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast"
 NWS_API = "https://api.weather.gov"
+METOFFICE_DAILY_API = "https://data.hub.api.metoffice.gov.uk/sitespecific/v0/point/daily"
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,9 @@ def fetch_weather_snapshot(
     accuweather = fetch_accuweather(latitude, longitude, target_date, unit)
     if accuweather:
         forecasts.append(accuweather)
+    metoffice = fetch_metoffice(latitude, longitude, target_date, unit)
+    if metoffice:
+        forecasts.append(metoffice)
 
     max_values = [forecast.max_temp for forecast in forecasts if forecast.max_temp is not None]
     min_values = [forecast.min_temp for forecast in forecasts if forecast.min_temp is not None]
@@ -107,6 +111,43 @@ def fetch_accuweather(latitude: float, longitude: float, target_date: str, unit:
     key = os.getenv("ACCUWEATHER_API_KEY", "").strip()
     if not key:
         return None
+
+
+def fetch_metoffice(latitude: float, longitude: float, target_date: str, unit: str = "fahrenheit") -> Optional[DailyForecast]:
+    key = os.getenv("METOFFICE_API_KEY", "").strip()
+    if not key:
+        return None
+    try:
+        data = get_json(METOFFICE_DAILY_API, {"latitude": latitude, "longitude": longitude}, headers={"apikey": key})
+        features = data.get("features") or []
+        properties = (features[0].get("properties") if features else data.get("properties")) or {}
+        times = properties.get("time") or properties.get("times") or properties.get("dates") or []
+        target = next((item for item in times if str(item.get("time") or item.get("date") or "").startswith(target_date)), None) if isinstance(times, list) else None
+        if not target:
+            return None
+        values = target.get("daySignificantWeatherCode", {}) if isinstance(target, dict) else {}
+        maximum = _nested_temperature(target, ("dayMaxScreenTemperature", "maxTemperature", "max_temp", "maximum"))
+        minimum = _nested_temperature(target, ("nightMinScreenTemperature", "minTemperature", "min_temp", "minimum"))
+        if maximum is None and minimum is None:
+            return None
+        return DailyForecast("metoffice", target_date, maximum, minimum, "C", str(target.get("time") or ""), f"{latitude},{longitude}", "", "metoffice_global_spot_daily", "metoffice_grid")
+    except (KeyError, IndexError, TypeError, ValueError, RuntimeError):
+        return None
+
+
+def _nested_temperature(value, names):
+    if not isinstance(value, dict):
+        return None
+    for name in names:
+        item = value.get(name)
+        if isinstance(item, dict):
+            item = item.get("value")
+        try:
+            if item is not None:
+                return float(item)
+        except (TypeError, ValueError):
+            continue
+    return None
     try:
         location = get_json("https://dataservice.accuweather.com/locations/v1/cities/geoposition/search", {"apikey": key, "q": f"{latitude},{longitude}"})
         location_key = str(location.get("Key") or "")
