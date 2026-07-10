@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass
 from typing import Optional
 
 from .market_scanner import WeatherMarket
+from .city_registry import load_city_registry
 
 
 @dataclass(frozen=True)
@@ -41,10 +42,10 @@ def parse_settlement_rule(market: WeatherMarket) -> SettlementRule:
     unit = _parse_unit(text)
     market_type = _parse_market_type(lower_text, market.market_type_guess)
     source = _parse_source(text, market.resolution_source)
-    timezone = _parse_timezone(text)
-    station = _parse_station(text, source)
+    city = market.normalized_city or market.city_guess or _parse_city(market.question)
+    timezone = _parse_timezone(text, city)
+    station = market.station_code or _parse_station(text, source)
     rounding = _parse_rounding(lower_text)
-    city = market.city_guess or _parse_city(market.question)
     date = _parse_date(market.question, market.end_date)
     buckets = _parse_market_buckets(market)
     reasons = _rule_reasons(city, date, market_type, source, unit, timezone, station, buckets)
@@ -121,10 +122,20 @@ def _parse_source(text: str, resolution_source: str) -> str:
         return "Open-Meteo"
     if "hong kong observatory" in lower:
         return "Hong Kong Observatory"
+    if "wunderground.com" in lower or "weather underground" in lower:
+        return "Weather Underground"
+    if "met office" in lower or "metoffice" in lower:
+        return "Met Office"
+    if "japan meteorological agency" in lower or re.search(r"\bjma\b", lower):
+        return "JMA"
+    if "korea meteorological administration" in lower or re.search(r"\bkma\b", lower):
+        return "KMA"
+    if "central weather administration" in lower or re.search(r"\bcwa\b", lower):
+        return "CWA"
     return ""
 
 
-def _parse_timezone(text: str) -> str:
+def _parse_timezone(text: str, city: str = "") -> str:
     lower = text.lower()
     if " et" in lower or " eastern time" in lower:
         return "America/New_York"
@@ -136,13 +147,18 @@ def _parse_timezone(text: str) -> str:
         return "America/Los_Angeles"
     if "hong kong" in lower or " hkt" in lower:
         return "Asia/Hong_Kong"
+    normalized = city.strip().lower()
+    for item in load_city_registry():
+        names = [str(item.get("name", "")), *(str(alias) for alias in item.get("aliases", []))]
+        if normalized in {name.lower() for name in names}:
+            return str(item.get("timezone") or "")
     return ""
 
 
 def _parse_station(text: str, source: str) -> str:
-    station = re.search(r"\bK[A-Z0-9]{3}\b", text)
+    station = re.search(r"(?:/|\b)([A-Z]{4})(?:\b|/)", text)
     if station:
-        return station.group(0)
+        return station.group(1)
     named_station = re.search(r"([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3}) (?:station|weather station)", text)
     if named_station:
         return named_station.group(1)

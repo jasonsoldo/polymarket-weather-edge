@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 
 from weather_edge.bucket_probability import build_bucket_probabilities, build_probability_model
 from weather_edge.event_bucket_analysis import build_event_trade_plan
@@ -10,6 +11,21 @@ from weather_edge.weather_sources import DailyForecast, WeatherSnapshot
 
 
 class SettlementAndProbabilityTests(unittest.TestCase):
+    def test_wunderground_rule_is_parsed_with_icao_station_and_city_timezone(self):
+        market = replace(
+            _market(),
+            question="Will the highest temperature in London be 25C on July 10?",
+            outcomes=("Yes", "No"),
+            outcome_prices=(0.2, 0.8),
+            city_guess="London",
+            normalized_city="London",
+            resolution_source="",
+            description="Resolves using https://www.wunderground.com/history/daily/gb/london/EGLC",
+        )
+        rule = parse_settlement_rule(market)
+        self.assertEqual(rule.settlement_source, "Weather Underground")
+        self.assertEqual(rule.target_station_or_data_source, "EGLC")
+        self.assertEqual(rule.timezone, "Europe/London")
     def test_parse_bucket_bounds(self):
         self.assertEqual(parse_bucket("86F or below").upper, 86)
         self.assertIsNone(parse_bucket("86F or below").lower)
