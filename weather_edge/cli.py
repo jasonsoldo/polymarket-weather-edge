@@ -221,8 +221,9 @@ def main(argv=None) -> int:
 
     if args.command == "live-weather":
         from .weather_sources import fetch_weather_snapshot
+        from .monitor import _city_unit
 
-        weather = fetch_weather_snapshot(args.city, args.lat, args.lon, args.date)
+        weather = fetch_weather_snapshot(args.city, args.lat, args.lon, args.date, unit=_city_unit(args.city))
         print(json.dumps(weather.to_dict(), indent=2))
         return 0
 
