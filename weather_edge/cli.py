@@ -6,7 +6,7 @@ from .backtest import run_backtest
 from .config import load_risk_config
 from .io import curve_to_dict, load_plan
 from .live_pipeline import run_live_dry_run
-from .monitor import build_live_snapshot, run_live_monitor_loop
+from .monitor import build_live_snapshot, run_all_cities_monitor_loop, run_live_monitor_loop
 from .pnl_curve import build_pnl_curve
 from .risk_manager import RiskConfig, evaluate_trade_plan
 from .simulator import simulate_settlement
@@ -82,6 +82,16 @@ def main(argv=None) -> int:
     monitor_loop_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_loop_parser.add_argument("--max-runs", type=int)
 
+    monitor_all_parser = sub.add_parser("live-monitor-all")
+    monitor_all_parser.add_argument("--date", required=True)
+    monitor_all_parser.add_argument("--output", default="logs/live_monitor_all.jsonl")
+    monitor_all_parser.add_argument("--interval", type=int, default=300)
+    monitor_all_parser.add_argument("--limit", type=int, default=100)
+    monitor_all_parser.add_argument("--books", action="store_true")
+    monitor_all_parser.add_argument("--pages", type=int, default=3)
+    monitor_all_parser.add_argument("--include-broad-weather", action="store_true")
+    monitor_all_parser.add_argument("--max-runs", type=int)
+
     web_monitor_parser = sub.add_parser("web-monitor")
     web_monitor_parser.add_argument("--host", default="127.0.0.1")
     web_monitor_parser.add_argument("--port", type=int, default=8080)
@@ -93,6 +103,15 @@ def main(argv=None) -> int:
     web_monitor_parser.add_argument("--limit", type=int, default=100)
     web_monitor_parser.add_argument("--pages", type=int, default=3)
     web_monitor_parser.add_argument("--include-broad-weather", action="store_true")
+
+    web_monitor_all_parser = sub.add_parser("web-monitor-all")
+    web_monitor_all_parser.add_argument("--host", default="127.0.0.1")
+    web_monitor_all_parser.add_argument("--port", type=int, default=8080)
+    web_monitor_all_parser.add_argument("--date", required=True)
+    web_monitor_all_parser.add_argument("--log", default="logs/live_monitor_all.jsonl")
+    web_monitor_all_parser.add_argument("--limit", type=int, default=100)
+    web_monitor_all_parser.add_argument("--pages", type=int, default=3)
+    web_monitor_all_parser.add_argument("--include-broad-weather", action="store_true")
 
     dry_run_parser = sub.add_parser("live-dry-run")
     dry_run_parser.add_argument("--city", required=True)
@@ -218,6 +237,20 @@ def main(argv=None) -> int:
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
         return 0
 
+    if args.command == "live-monitor-all":
+        runs = run_all_cities_monitor_loop(
+            args.date,
+            args.output,
+            interval_seconds=args.interval,
+            market_limit=args.limit,
+            include_books=args.books,
+            pages=args.pages,
+            include_broad_weather=args.include_broad_weather,
+            max_runs=args.max_runs,
+        )
+        print(json.dumps({"output": args.output, "runs": runs}, indent=2))
+        return 0
+
     if args.command == "web-monitor":
         from .web_monitor import run_web_monitor
 
@@ -227,6 +260,20 @@ def main(argv=None) -> int:
             args.city,
             args.lat,
             args.lon,
+            args.date,
+            log_path=args.log,
+            market_limit=args.limit,
+            pages=args.pages,
+            include_broad_weather=args.include_broad_weather,
+        )
+        return 0
+
+    if args.command == "web-monitor-all":
+        from .web_monitor import run_all_cities_web_monitor
+
+        run_all_cities_web_monitor(
+            args.host,
+            args.port,
             args.date,
             log_path=args.log,
             market_limit=args.limit,

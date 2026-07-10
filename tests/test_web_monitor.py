@@ -40,6 +40,40 @@ class WebMonitorTests(unittest.TestCase):
         self.assertIn("data_disagreement", html)
         self.assertIn("No strict city temperature markets found", html)
 
+    def test_render_dashboard_shows_all_cities_table(self):
+        snapshot = {
+            "mode": "all_cities",
+            "target_date": "2026-07-10",
+            "recommended_action": "NO_TRADE",
+            "cities_monitored": 2,
+            "markets_found": 0,
+            "strict_markets_found": 0,
+            "strict_markets": [],
+            "cities": [
+                {
+                    "city": "New York",
+                    "recommended_action": "NO_TRADE",
+                    "markets_found": 0,
+                    "weather": {"disagreement": 3.9, "confidence": 0.65},
+                    "risk_reasons": ["NO_TRADE"],
+                },
+                {
+                    "city": "Chicago",
+                    "recommended_action": "NO_MARKET",
+                    "markets_found": 0,
+                    "weather": {"disagreement": 0.5, "confidence": 0.9},
+                    "risk_reasons": ["no strict city temperature markets found"],
+                },
+            ],
+        }
+
+        html = render_dashboard(snapshot, [snapshot])
+
+        self.assertIn("WeatherEdge All Cities Monitor", html)
+        self.assertIn("New York", html)
+        self.assertIn("Chicago", html)
+        self.assertIn("Global Strict Temperature Markets", html)
+
 
 if __name__ == "__main__":
     unittest.main()

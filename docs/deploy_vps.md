@@ -113,23 +113,31 @@ tail -f /opt/polymarket-weather-edge/logs/live_monitor.jsonl
 
 ## Web Monitor
 
-The web monitor is read-only. It shows the latest live snapshot, recent JSONL
-history, weather disagreement, confidence, strict market count, and NO_TRADE
-reasons.
+The web monitor is read-only. The all-cities mode monitors the default city
+set used by the strict temperature-market scanner: New York, Chicago, Austin,
+Miami, and Los Angeles.
 
-Test it manually on the VPS:
+First run the all-cities JSONL monitor:
 
 ```bash
 cd /opt/polymarket-weather-edge
 . .venv/bin/activate
-python -m weather_edge.cli web-monitor \
+python -m weather_edge.cli live-monitor-all \
+  --date 2026-07-10 \
+  --output logs/live_monitor_all.jsonl \
+  --interval 300 \
+  --limit 100 \
+  --pages 5
+```
+
+Then test the all-cities web monitor manually:
+
+```bash
+python -m weather_edge.cli web-monitor-all \
   --host 0.0.0.0 \
   --port 8080 \
-  --city "New York" \
-  --lat 40.7128 \
-  --lon -74.0060 \
   --date 2026-07-10 \
-  --log logs/live_monitor.jsonl \
+  --log logs/live_monitor_all.jsonl \
   --limit 100 \
   --pages 5
 ```
@@ -168,6 +176,32 @@ sudo systemctl enable weather-edge-web
 sudo systemctl restart weather-edge-web
 sudo systemctl status weather-edge-web
 curl http://127.0.0.1:8080/health
+```
+
+For all-cities background collection, create
+`/etc/systemd/system/weather-edge-monitor-all.service`:
+
+```ini
+[Unit]
+Description=Weather Edge all-cities read-only monitor
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarket-weather-edge
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli live-monitor-all --date 2026-07-10 --output logs/live_monitor_all.jsonl --interval 300 --limit 100 --pages 5
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+```
+
+For the all-cities web service, use this `ExecStart` instead of the single-city
+example above:
+
+```ini
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli web-monitor-all --host 0.0.0.0 --port 8080 --date 2026-07-10 --log logs/live_monitor_all.jsonl --limit 100 --pages 5
 ```
 
 ## Required Before Live Trading

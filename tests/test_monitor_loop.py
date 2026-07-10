@@ -4,11 +4,35 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from weather_edge.monitor import build_live_snapshot, run_live_monitor_loop
+from weather_edge.monitor import build_all_cities_snapshot, build_live_snapshot, run_live_monitor_loop
 from weather_edge.weather_sources import WeatherSnapshot
 
 
 class MonitorLoopTests(unittest.TestCase):
+    def test_all_cities_snapshot_groups_city_weather_and_strict_markets(self):
+        weather = WeatherSnapshot(
+            city="",
+            latitude=0.0,
+            longitude=0.0,
+            target_date="2026-07-10",
+            forecasts=(),
+            disagreement=0.5,
+            confidence=0.9,
+        )
+
+        with patch("weather_edge.monitor.fetch_weather_markets", return_value=[]), patch(
+            "weather_edge.monitor.fetch_weather_snapshot", return_value=weather
+        ):
+            snapshot = build_all_cities_snapshot(
+                "2026-07-10",
+                cities={"New York": (40.7128, -74.0060), "Chicago": (41.8781, -87.6298)},
+            )
+
+        self.assertEqual(snapshot["mode"], "all_cities")
+        self.assertEqual(snapshot["cities_monitored"], 2)
+        self.assertEqual(snapshot["recommended_action"], "NO_MARKET")
+        self.assertEqual(len(snapshot["cities"]), 2)
+
     def test_monitor_snapshot_marks_no_trade_when_weather_confidence_is_bad(self):
         weather = WeatherSnapshot(
             city="New York",
