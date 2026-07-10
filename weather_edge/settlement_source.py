@@ -78,7 +78,14 @@ def _fetch_configured_official(rule: SettlementRule) -> SettlementSourceResult:
     if not endpoint or not key:
         return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "official adapter requires API key and settlement URL")
     try:
-        payload = get_json(endpoint, {"apiKey": key, "station": rule.target_station_or_data_source, "date": rule.date, "target_date": rule.date})
+        endpoint = endpoint.replace("{date}", rule.date).replace("{station}", rule.target_station_or_data_source).replace("{city}", rule.city)
+        params = {"station": rule.target_station_or_data_source, "date": rule.date, "target_date": rule.date}
+        headers = {}
+        if prefix == "METOFFICE":
+            headers["apikey"] = key
+        else:
+            params["apiKey"] = key
+        payload = get_json(endpoint, params, headers=headers)
         maximum, minimum, observed_at = _extract_extremes(payload)
         if maximum is None and minimum is None:
             return SettlementSourceResult("unavailable", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", f"{prefix} response contained no temperature extremes")

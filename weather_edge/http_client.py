@@ -9,10 +9,12 @@ from urllib.request import Request, urlopen
 USER_AGENT = "polymarket-weather-edge/0.1 contact=local"
 
 
-def get_json(url: str, params: Optional[dict] = None, timeout: int = 20, retries: int = 2):
+def get_json(url: str, params: Optional[dict] = None, timeout: int = 20, retries: int = 2, headers: Optional[dict] = None):
     if params:
         url = f"{url}?{urlencode(params)}"
-    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    request_headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    request_headers.update(headers or {})
+    request = Request(url, headers=request_headers)
     last_error = None
     for attempt in range(retries + 1):
         try:
