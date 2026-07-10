@@ -28,20 +28,24 @@ def render_dashboard(snapshot: dict, history: list[dict]) -> str:
     action = snapshot.get("recommended_action", "UNKNOWN")
     risk_reasons = snapshot.get("risk_reasons", [])
     weather = snapshot.get("weather", {})
-    markets = snapshot.get("markets", [])
-    rows = []
-    for market in markets[:20]:
-        rows.append(
+    bucket_rows = []
+    for bucket in _event_bucket_rows(snapshot):
+        death_gap = "YES" if bucket["death_gap"] else ""
+        bucket_rows.append(
             "<tr>"
-            f"<td>{_esc(market.get('market_id', ''))}</td>"
-            f"<td>{_esc(market.get('question', ''))}</td>"
-            f"<td>{_esc(market.get('market_type_guess', ''))}</td>"
-            f"<td>{_esc(market.get('excluded_reason', ''))}</td>"
-            f"<td>{_esc(market.get('city_match_score', ''))}</td>"
+            f"<td>{_esc(bucket['event'])}</td>"
+            f"<td>{_esc(bucket['bucket'])}</td>"
+            f"<td>{_esc(bucket['price'])}</td>"
+            f"<td>{_esc(bucket['model_probability'])}</td>"
+            f"<td>{_esc(bucket['edge'])}</td>"
+            f"<td>{_esc(bucket['shares'])}</td>"
+            f"<td>{_esc(bucket['pnl_if_wins'])}</td>"
+            f"<td>{_esc(death_gap)}</td>"
+            f"<td>{_esc(bucket['action'])}</td>"
             "</tr>"
         )
-    if not rows:
-        rows.append("<tr><td colspan='5'>No strict city temperature markets found.</td></tr>")
+    if not bucket_rows:
+        bucket_rows.append("<tr><td colspan='9'>No analyzable city temperature buckets found.</td></tr>")
 
     history_rows = []
     for item in reversed(history[-20:]):
@@ -89,10 +93,10 @@ def render_dashboard(snapshot: dict, history: list[dict]) -> str:
   <h2>Risk</h2>
   <pre>{_esc(json.dumps({'blocked_by': snapshot.get('blocked_by', ''), 'risk_reasons': risk_reasons, 'threshold': snapshot.get('threshold', {})}, indent=2))}</pre>
 
-  <h2>Markets</h2>
+  <h2>Temperature Buckets</h2>
   <table>
-    <tr><th>Market ID</th><th>Question</th><th>Type</th><th>Excluded</th><th>City Score</th></tr>
-    {''.join(rows)}
+    <tr><th>Event</th><th>Bucket</th><th>Price</th><th>Model Probability</th><th>Edge</th><th>Shares</th><th>PnL If Wins</th><th>Death Gap</th><th>Action</th></tr>
+    {''.join(bucket_rows)}
   </table>
 
   <h2>Recent Snapshots</h2>
@@ -124,6 +128,25 @@ def render_all_cities_dashboard(snapshot: dict, history: list[dict]) -> str:
         )
     if not city_rows:
         city_rows.append("<tr><td colspan='6'>No cities configured.</td></tr>")
+
+    bucket_rows = []
+    for item in snapshot.get("cities", []):
+        for bucket in _event_bucket_rows(item):
+            bucket_rows.append(
+                "<tr>"
+                f"<td>{_esc(item.get('city', ''))}</td>"
+                f"<td>{_esc(bucket['event'])}</td>"
+                f"<td>{_esc(bucket['bucket'])}</td>"
+                f"<td>{_esc(bucket['price'])}</td>"
+                f"<td>{_esc(bucket['model_probability'])}</td>"
+                f"<td>{_esc(bucket['edge'])}</td>"
+                f"<td>{_esc(bucket['pnl_if_wins'])}</td>"
+                f"<td>{_esc('YES' if bucket['death_gap'] else '')}</td>"
+                f"<td>{_esc(bucket['action'])}</td>"
+                "</tr>"
+            )
+    if not bucket_rows:
+        bucket_rows.append("<tr><td colspan='9'>No analyzable city temperature buckets found.</td></tr>")
 
     market_rows = []
     for market in snapshot.get("strict_markets", [])[:50]:
@@ -185,6 +208,12 @@ def render_all_cities_dashboard(snapshot: dict, history: list[dict]) -> str:
   <table>
     <tr><th>City</th><th>Action</th><th>Markets</th><th>Disagreement</th><th>Confidence</th><th>Reasons</th></tr>
     {''.join(city_rows)}
+  </table>
+
+  <h2>City Temperature Buckets</h2>
+  <table>
+    <tr><th>City</th><th>Event</th><th>Bucket</th><th>Price</th><th>Model Probability</th><th>Edge</th><th>PnL If Wins</th><th>Death Gap</th><th>Action</th></tr>
+    {''.join(bucket_rows)}
   </table>
 
   <h2>Global Strict Temperature Markets</h2>
@@ -352,3 +381,27 @@ def _make_all_cities_handler(
 
 def _esc(value) -> str:
     return html.escape(str(value), quote=True)
+
+
+def _event_bucket_rows(snapshot: dict) -> list[dict]:
+    rows = []
+    for event in snapshot.get("markets", []):
+        plan = event.get("event_bucket_plan") or {}
+        curve = plan.get("curve") or {}
+        death_gaps = {gap.get("bucket", "") for gap in curve.get("death_gaps", [])}
+        action = (plan.get("decision") or {}).get("recommended_action", "")
+        for bucket in curve.get("rows", []):
+            rows.append(
+                {
+                    "event": event.get("event_slug") or event.get("event_id", ""),
+                    "bucket": bucket.get("bucket", ""),
+                    "price": bucket.get("price", ""),
+                    "model_probability": bucket.get("model_probability", ""),
+                    "edge": bucket.get("edge", ""),
+                    "shares": bucket.get("shares", ""),
+                    "pnl_if_wins": bucket.get("pnl_if_wins", ""),
+                    "death_gap": bucket.get("bucket", "") in death_gaps,
+                    "action": action,
+                }
+            )
+    return rows

@@ -38,7 +38,36 @@ class WebMonitorTests(unittest.TestCase):
         self.assertIn("WeatherEdge Monitor", html)
         self.assertIn("NO_TRADE", html)
         self.assertIn("data_disagreement", html)
-        self.assertIn("No strict city temperature markets found", html)
+        self.assertIn("No analyzable city temperature buckets found", html)
+
+    def test_render_dashboard_shows_event_bucket_pnl_and_death_gap(self):
+        snapshot = {
+            "city": "Hong Kong",
+            "target_date": "2026-07-10",
+            "recommended_action": "WATCH",
+            "weather": {"disagreement": 0.5, "confidence": 0.9},
+            "markets_found": 1,
+            "markets": [{
+                "event_slug": "highest-temperature-in-hong-kong",
+                "event_bucket_plan": {
+                    "decision": {"recommended_action": "block_new_position"},
+                    "curve": {
+                        "death_gaps": [{"bucket": "27°C"}],
+                        "rows": [{
+                            "bucket": "27°C", "price": 0.20, "model_probability": 0.32,
+                            "edge": 0.12, "shares": 0.0, "pnl_if_wins": 0.0,
+                        }],
+                    },
+                },
+            }],
+        }
+
+        html = render_dashboard(snapshot, [])
+
+        self.assertIn("Temperature Buckets", html)
+        self.assertIn("highest-temperature-in-hong-kong", html)
+        self.assertIn("PnL If Wins", html)
+        self.assertIn("YES", html)
 
     def test_render_dashboard_shows_all_cities_table(self):
         snapshot = {
@@ -73,6 +102,27 @@ class WebMonitorTests(unittest.TestCase):
         self.assertIn("New York", html)
         self.assertIn("Chicago", html)
         self.assertIn("Global Strict Temperature Markets", html)
+
+    def test_all_cities_dashboard_shows_city_bucket_curve(self):
+        snapshot = {
+            "mode": "all_cities", "target_date": "2026-07-10", "recommended_action": "WATCH",
+            "cities_monitored": 1, "markets_found": 1, "strict_markets_found": 0, "strict_markets": [],
+            "cities": [{
+                "city": "Hong Kong", "recommended_action": "WATCH", "markets_found": 1,
+                "weather": {"disagreement": 0.5, "confidence": 0.9}, "risk_reasons": [],
+                "markets": [{
+                    "event_slug": "highest-temperature-in-hong-kong",
+                    "event_bucket_plan": {"decision": {"recommended_action": "block_new_position"}, "curve": {
+                        "death_gaps": [], "rows": [{"bucket": "27°C", "price": 0.2, "model_probability": 0.3, "edge": 0.1, "pnl_if_wins": 0.0}],
+                    }},
+                }],
+            }],
+        }
+
+        html = render_dashboard(snapshot, [])
+
+        self.assertIn("City Temperature Buckets", html)
+        self.assertIn("27°C", html)
 
 
 if __name__ == "__main__":
