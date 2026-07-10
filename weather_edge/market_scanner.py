@@ -545,11 +545,14 @@ def _guess_city(event: dict[str, Any], market: dict[str, Any]) -> str:
     return ""
 
 def _discover_city(parts, event, market):
-    text = _parts_haystack(parts)
-    item, alias = match_city(text, load_city_registry())
+    registry = load_city_registry()
+    guessed = _guess_city(event, market)
+    item, alias = match_city(guessed, registry)
     if item:
         return item["name"], alias
-    guessed = _guess_city(event, market)
+    item, alias = match_city(_parts_haystack(parts), registry)
+    if item:
+        return item["name"], alias
     return guessed, guessed
 
 def _station_code(parts, event, market):

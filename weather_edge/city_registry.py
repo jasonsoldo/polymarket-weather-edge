@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 REGISTRY_PATH = Path(__file__).parent.parent / "config" / "cities.json"
@@ -13,8 +14,8 @@ def load_city_registry(path=REGISTRY_PATH):
 def match_city(text, registry=None):
     haystack = (text or "").lower()
     for item in registry or load_city_registry():
-        aliases = [item.get("name", ""), *item.get("aliases", [])]
+        aliases = sorted([item.get("name", ""), *item.get("aliases", [])], key=len, reverse=True)
         for alias in aliases:
-            if alias and alias.lower() in haystack:
+            if alias and re.search(r"(?<![a-z0-9])" + re.escape(alias.lower()) + r"(?![a-z0-9])", haystack):
                 return item, alias
     return None, ""
