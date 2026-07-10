@@ -111,6 +111,65 @@ sudo systemctl status weather-edge-monitor
 tail -f /opt/polymarket-weather-edge/logs/live_monitor.jsonl
 ```
 
+## Web Monitor
+
+The web monitor is read-only. It shows the latest live snapshot, recent JSONL
+history, weather disagreement, confidence, strict market count, and NO_TRADE
+reasons.
+
+Test it manually on the VPS:
+
+```bash
+cd /opt/polymarket-weather-edge
+. .venv/bin/activate
+python -m weather_edge.cli web-monitor \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --city "New York" \
+  --lat 40.7128 \
+  --lon -74.0060 \
+  --date 2026-07-10 \
+  --log logs/live_monitor.jsonl \
+  --limit 100 \
+  --pages 5
+```
+
+Then open:
+
+```text
+http://YOUR_VPS_IP:8080/
+http://YOUR_VPS_IP:8080/api/snapshot
+http://YOUR_VPS_IP:8080/api/logs
+```
+
+Create `/etc/systemd/system/weather-edge-web.service`:
+
+```ini
+[Unit]
+Description=Weather Edge read-only web monitor
+After=network-online.target weather-edge-monitor.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarket-weather-edge
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli web-monitor --host 0.0.0.0 --port 8080 --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --log logs/live_monitor.jsonl --limit 100 --pages 5
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable weather-edge-web
+sudo systemctl restart weather-edge-web
+sudo systemctl status weather-edge-web
+curl http://127.0.0.1:8080/health
+```
+
 ## Required Before Live Trading
 
 - Historical data collection for serious backtests

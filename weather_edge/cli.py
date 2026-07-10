@@ -82,6 +82,18 @@ def main(argv=None) -> int:
     monitor_loop_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_loop_parser.add_argument("--max-runs", type=int)
 
+    web_monitor_parser = sub.add_parser("web-monitor")
+    web_monitor_parser.add_argument("--host", default="127.0.0.1")
+    web_monitor_parser.add_argument("--port", type=int, default=8080)
+    web_monitor_parser.add_argument("--city", required=True)
+    web_monitor_parser.add_argument("--lat", type=float, required=True)
+    web_monitor_parser.add_argument("--lon", type=float, required=True)
+    web_monitor_parser.add_argument("--date", required=True)
+    web_monitor_parser.add_argument("--log", default="logs/live_monitor.jsonl")
+    web_monitor_parser.add_argument("--limit", type=int, default=100)
+    web_monitor_parser.add_argument("--pages", type=int, default=3)
+    web_monitor_parser.add_argument("--include-broad-weather", action="store_true")
+
     dry_run_parser = sub.add_parser("live-dry-run")
     dry_run_parser.add_argument("--city", required=True)
     dry_run_parser.add_argument("--lat", type=float, required=True)
@@ -204,6 +216,23 @@ def main(argv=None) -> int:
             max_runs=args.max_runs,
         )
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
+        return 0
+
+    if args.command == "web-monitor":
+        from .web_monitor import run_web_monitor
+
+        run_web_monitor(
+            args.host,
+            args.port,
+            args.city,
+            args.lat,
+            args.lon,
+            args.date,
+            log_path=args.log,
+            market_limit=args.limit,
+            pages=args.pages,
+            include_broad_weather=args.include_broad_weather,
+        )
         return 0
 
     if args.command == "live-dry-run":
