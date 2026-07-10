@@ -28,7 +28,21 @@ def run_backtest(path: str, config: RiskConfig) -> tuple[BacktestSummary, list[d
 
     for scenario in data["scenarios"]:
         state = MarketState(**scenario["market"])
-        buckets = [BucketInput(**bucket) for bucket in scenario["buckets"]]
+        execution = scenario.get("execution") or {}
+        fill_ratio = float(execution.get("fill_ratio", 1.0))
+        slippage = float(execution.get("slippage", 0.0))
+        if fill_ratio < 0 or fill_ratio > 1 or slippage < 0:
+            raise ValueError("execution fill_ratio must be 0..1 and slippage must be non-negative")
+        buckets = [
+            BucketInput(
+                **{
+                    **bucket,
+                    "price": min(1.0, float(bucket["price"]) + slippage),
+                    "shares": float(bucket["shares"]) * fill_ratio,
+                }
+            )
+            for bucket in scenario["buckets"]
+        ]
         curve = build_pnl_curve(buckets, config.max_uncovered_probability)
         decision = evaluate_trade_plan(curve, state, config)
         sim = simulate_settlement(curve, decision, scenario["winning_bucket"])
@@ -49,6 +63,7 @@ def run_backtest(path: str, config: RiskConfig) -> tuple[BacktestSummary, list[d
                 "recommended_action": decision.recommended_action,
                 "reasons": list(decision.reasons),
                 "realized_pnl": sim.realized_pnl,
+                "execution": {"fill_ratio": fill_ratio, "slippage": slippage},
                 "equity": equity,
                 "curve": curve_to_dict(curve),
             }

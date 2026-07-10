@@ -7,6 +7,7 @@ from .orderbook import BookSummary
 from .pnl_curve import BucketInput, PnLCurve, build_pnl_curve
 from .position_manager import Position
 from .risk_manager import MarketState, RiskConfig, RiskDecision, evaluate_trade_plan
+from .settlement_source import settlement_source_capability
 from .settlement_rules import BucketSpec, SettlementRule, parse_settlement_rule
 from .strategy_config import StrategyConfig
 from .strategy_planner import PlannedOrder
@@ -18,6 +19,7 @@ class EventTradePlan:
     event_id: str
     event_slug: str
     settlement_rule: SettlementRule
+    settlement_source_status: str
     forecast_model: object
     probability_sum: float
     bucket_set_complete: bool
@@ -34,6 +36,7 @@ class EventTradePlan:
             "date": self.settlement_rule.date,
             "market_type": self.settlement_rule.market_type,
             "settlement_rule": self.settlement_rule.to_dict(),
+            "settlement_source_status": self.settlement_source_status,
             "forecast_model": self.forecast_model.to_dict(),
             "probability_sum": self.probability_sum,
             "bucket_set_complete": self.bucket_set_complete,
@@ -73,6 +76,7 @@ def build_event_trade_plan(
     rule = parsed[0][1]
     completeness_reasons = _completeness_reasons(parsed)
     model = build_probability_model(rule, weather)
+    source_status = settlement_source_capability(rule)
     bucket_rows = []
     for market, market_rule in parsed:
         if len(market_rule.buckets) != 1:
@@ -135,13 +139,16 @@ def build_event_trade_plan(
         current_total_exposure=current_total_exposure,
     )
     decision = evaluate_trade_plan(curve, state, risk)
-    if not complete or rule.reasons:
+    if not complete or rule.reasons or source_status != "supported_official":
         reasons = list(decision.reasons) + list(rule.reasons) + list(dict.fromkeys(completeness_reasons))
+        if source_status != "supported_official":
+            reasons.append(source_status)
         decision = RiskDecision(False, "block_new_position", tuple(dict.fromkeys(reasons)))
     return EventTradePlan(
         markets[0].event_id,
         markets[0].event_slug,
         rule,
+        source_status,
         model,
         probability_sum,
         complete,

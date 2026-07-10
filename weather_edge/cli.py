@@ -81,6 +81,7 @@ def main(argv=None) -> int:
     monitor_loop_parser.add_argument("--pages", type=int, default=3)
     monitor_loop_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_loop_parser.add_argument("--max-runs", type=int)
+    monitor_loop_parser.add_argument("--history-db", default="data/market_history.sqlite")
 
     monitor_all_parser = sub.add_parser("live-monitor-all")
     monitor_all_parser.add_argument("--date", required=True)
@@ -91,6 +92,7 @@ def main(argv=None) -> int:
     monitor_all_parser.add_argument("--pages", type=int, default=3)
     monitor_all_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_all_parser.add_argument("--max-runs", type=int)
+    monitor_all_parser.add_argument("--history-db", default="data/market_history.sqlite")
 
     web_monitor_parser = sub.add_parser("web-monitor")
     web_monitor_parser.add_argument("--host", default="127.0.0.1")
@@ -233,6 +235,7 @@ def main(argv=None) -> int:
             pages=args.pages,
             include_broad_weather=args.include_broad_weather,
             max_runs=args.max_runs,
+            history_db=args.history_db,
         )
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
         return 0
@@ -247,6 +250,7 @@ def main(argv=None) -> int:
             pages=args.pages,
             include_broad_weather=args.include_broad_weather,
             max_runs=args.max_runs,
+            history_db=args.history_db,
         )
         print(json.dumps({"output": args.output, "runs": runs}, indent=2))
         return 0

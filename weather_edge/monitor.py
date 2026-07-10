@@ -7,9 +7,11 @@ from typing import Optional
 
 from .event_bucket_analysis import build_event_trade_plan, group_event_markets
 from .http_client import get_json
+from .history_store import save_monitor_snapshot
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
 from .risk_manager import RiskConfig, weather_data_block
+from .settlement_source import fetch_settlement_observation
 from .strategy_config import StrategyConfig
 from .weather_sources import fetch_weather_snapshot
 
@@ -69,6 +71,7 @@ def build_live_snapshot(
                 event_markets, weather, StrategyConfig(), RiskConfig(), books
             )
             row["event_bucket_plan"] = plan.to_dict()
+            row["settlement_observation"] = fetch_settlement_observation(plan.settlement_rule).to_dict()
         except ValueError as exc:
             row["event_bucket_plan_error"] = str(exc)
         row["books"] = []
@@ -181,6 +184,7 @@ def run_live_monitor_loop(
     pages: int = 3,
     include_broad_weather: bool = False,
     max_runs: Optional[int] = None,
+    history_db: str = "",
 ) -> int:
     if interval_seconds < 1:
         raise ValueError("interval_seconds must be at least 1")
@@ -204,6 +208,8 @@ def run_live_monitor_loop(
         )
         with output.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(snapshot, sort_keys=True) + "\n")
+        if history_db:
+            save_monitor_snapshot(history_db, snapshot)
 
         runs += 1
         if max_runs is not None and runs >= max_runs:
@@ -221,6 +227,7 @@ def run_all_cities_monitor_loop(
     pages: int = 3,
     include_broad_weather: bool = False,
     max_runs: Optional[int] = None,
+    history_db: str = "",
 ) -> int:
     if interval_seconds < 1:
         raise ValueError("interval_seconds must be at least 1")
@@ -238,6 +245,8 @@ def run_all_cities_monitor_loop(
         )
         with output.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(snapshot, sort_keys=True) + "\n")
+        if history_db:
+            save_monitor_snapshot(history_db, snapshot)
 
         runs += 1
         if max_runs is not None and runs >= max_runs:
