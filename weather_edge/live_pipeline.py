@@ -6,6 +6,7 @@ from .risk_manager import RiskConfig, weather_data_block
 from .strategy_config import StrategyConfig
 from .trade_executor import execute_trade_plan
 from .weather_sources import fetch_weather_snapshot
+from .monitor import _city_unit
 
 
 def run_live_dry_run(
@@ -24,7 +25,7 @@ def run_live_dry_run(
     pages: int = 2,
     include_broad_weather: bool = False,
 ) -> dict:
-    weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
+    weather = fetch_weather_snapshot(city, latitude, longitude, target_date, unit=_city_unit(city))
     weather_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, risk)
     if weather_block:
         return {
