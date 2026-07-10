@@ -9,7 +9,8 @@ from .event_bucket_analysis import build_event_trade_plan, group_event_markets
 from .alert_manager import emit_alerts
 from .http_client import get_json
 from .history_store import save_monitor_snapshot
-from .market_scanner import fetch_weather_markets
+from .market_scanner import fetch_weather_markets, get_last_scan_stats
+from .city_registry import load_city_registry
 from .orderbook import fetch_book_summary
 from .portfolio import portfolio_snapshot
 from .risk_manager import RiskConfig, weather_data_block
@@ -45,10 +46,12 @@ def build_live_snapshot(
     pages: int = 3,
     include_broad_weather: bool = False,
     discovered_markets=None,
+    max_pages: int = 5,
+    scan_all_pages: bool = False,
 ) -> dict:
     target_date = _resolve_target_date(target_date)
     markets = discovered_markets if discovered_markets is not None else fetch_weather_markets(
-        market_limit, city=city, tag_id=tag_id, slug=slug, query=query, pages=pages,
+        market_limit, city=city, tag_id=tag_id, slug=slug, query=query, pages=pages, max_pages=max_pages, scan_all_pages=scan_all_pages,
         include_broad_weather=include_broad_weather,
     )
     markets = _markets_for_target_date(markets, target_date)
@@ -120,17 +123,19 @@ def build_all_cities_snapshot(
     include_books: bool = False,
     pages: int = 3,
     include_broad_weather: bool = False,
+    max_pages: int = 5,
+    scan_all_pages: bool = False,
 ) -> dict:
     target_date = _resolve_target_date(target_date)
     strict_markets = _markets_for_target_date(
-        fetch_weather_markets(market_limit, city="", pages=pages, include_broad_weather=include_broad_weather),
+        fetch_weather_markets(market_limit, city="", pages=pages, max_pages=max_pages, scan_all_pages=scan_all_pages, include_broad_weather=include_broad_weather),
         target_date,
     )
     city_coords, unresolved_cities = _city_coords_for_markets(strict_markets, cities)
     city_snapshots = []
     for city, coords in city_coords.items():
         latitude, longitude = coords
-        city_markets = [market for market in strict_markets if market.city_guess.lower() == city.lower()]
+        city_markets = [market for market in strict_markets if (market.normalized_city or market.city_guess).lower() == city.lower()]
         city_snapshots.append(
             build_live_snapshot(
                 city,
@@ -144,6 +149,9 @@ def build_all_cities_snapshot(
                 discovered_markets=city_markets,
             )
         )
+    for city in unresolved_cities:
+        city_markets = [market for market in strict_markets if (market.normalized_city or market.city_guess) == city]
+        city_snapshots.append({"city": city, "discovered_city": city, "normalized_city": city, "city_registry_status": "discovered_unregistered", "recommended_action": "NO_TRADE", "action": "monitor_only", "block_reason": "city_not_registered", "markets_found": len(city_markets), "markets": [{"markets": [m.to_dict() for m in city_markets]}]})
     actions = [item.get("recommended_action", "") for item in city_snapshots]
     if any(action == "NO_TRADE" for action in actions):
         recommended_action = "NO_TRADE"
@@ -163,6 +171,14 @@ def build_all_cities_snapshot(
         "strict_markets": [market.to_dict() for market in strict_markets],
         "risk_capital_limit": RiskConfig().max_total_exposure,
         "unresolved_cities": unresolved_cities,
+        "markets_scanned": get_last_scan_stats().get("markets_scanned", 0),
+        "temperature_markets_found": len(strict_markets),
+        "cities_discovered": len(city_coords) + len(unresolved_cities),
+        "registered_cities": len(city_coords),
+        "unregistered_cities": len(unresolved_cities),
+        "excluded_markets": get_last_scan_stats().get("excluded_markets", 0),
+        "pages_scanned": get_last_scan_stats().get("pages_scanned", 0),
+        "scan_completed": get_last_scan_stats().get("scan_completed", False),
         "cities": city_snapshots,
         "notes": [
             "read_only_snapshot",
@@ -189,6 +205,8 @@ def run_live_monitor_loop(
     max_runs: Optional[int] = None,
     history_db: str = "",
     alerts_log: str = "",
+    max_pages: int = 5,
+    scan_all_pages: bool = False,
 ) -> int:
     if interval_seconds < 1:
         raise ValueError("interval_seconds must be at least 1")
@@ -208,6 +226,8 @@ def run_live_monitor_loop(
             slug=slug,
             query=query,
             pages=pages,
+            max_pages=max_pages,
+            scan_all_pages=scan_all_pages,
             include_broad_weather=include_broad_weather,
         )
         with output.open("a", encoding="utf-8") as handle:
@@ -235,6 +255,8 @@ def run_all_cities_monitor_loop(
     max_runs: Optional[int] = None,
     history_db: str = "",
     alerts_log: str = "",
+    max_pages: int = 5,
+    scan_all_pages: bool = False,
 ) -> int:
     if interval_seconds < 1:
         raise ValueError("interval_seconds must be at least 1")
@@ -249,6 +271,8 @@ def run_all_cities_monitor_loop(
             include_books=include_books,
             pages=pages,
             include_broad_weather=include_broad_weather,
+            max_pages=max_pages,
+            scan_all_pages=scan_all_pages,
         )
         with output.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(snapshot, sort_keys=True) + "\n")
@@ -285,9 +309,13 @@ def _city_coords_for_markets(markets, configured_cities):
         return configured_cities, []
     coords = {}
     unresolved = []
-    for city in sorted({market.city_guess.strip() for market in markets if market.city_guess.strip()}):
+    registry = {item.get("name", ""): item for item in load_city_registry()}
+    for city in sorted({(market.normalized_city or market.discovered_city or market.city_guess).strip() for market in markets if (market.normalized_city or market.discovered_city or market.city_guess).strip()}):
         if city in DEFAULT_CITY_COORDS:
             coords[city] = DEFAULT_CITY_COORDS[city]
+            continue
+        if city in registry and registry[city].get("latitude") is not None:
+            coords[city] = (float(registry[city]["latitude"]), float(registry[city]["longitude"]))
             continue
         try:
             coords[city] = _geocode_city(city)

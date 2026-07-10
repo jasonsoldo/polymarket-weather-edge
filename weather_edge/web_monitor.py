@@ -37,7 +37,7 @@ def _render_monitor(snapshot: dict, title: str) -> str:
     rows = _monitor_rows(snapshot)
     rendered_rows = [
         "<tr>"
-        f"<td><strong>{_esc(row['city'])}</strong><br><span class='muted'>{_esc(row['source_state'])}</span></td>"
+        f"<td><strong>{_esc(row['city'])}</strong><br><span class='muted'>{_esc(row['normalized_city'])} | {_esc(row['station_code'])} | {_esc(row['registry_status'])}</span></td>"
         f"<td><strong>{_esc(row['market'])}</strong><br><span class='muted'>{_esc(row['settlement'])}</span></td>"
         f"<td>{_esc(row['weather'])}<br><span class='model'>{_esc(row['model_temperature'])}</span></td>"
         f"<td>{_esc(row['investment'])}<br><span class='muted'>cap { _esc(row['capital_limit']) }</span></td>"
@@ -51,7 +51,7 @@ def _render_monitor(snapshot: dict, title: str) -> str:
 <style>:root{{color:#172033;background:#f4f7fb;font-family:Arial,sans-serif}}*{{box-sizing:border-box}}body{{margin:0;background:#f4f7fb}}main{{max-width:1480px;margin:auto;padding:26px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:20px}}h1{{font-size:24px;margin:0}}h2{{font-size:16px;margin:26px 0 10px}}.sub,.muted{{color:#667085;font-size:12px}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px}}.card{{background:#fff;border:1px solid #d9e1ec;border-radius:8px;padding:13px;min-height:82px}}.metric{{font-size:22px;font-weight:700;margin-top:8px}}.positive{{color:#067647;font-weight:700}}.negative{{color:#b42318;font-weight:700}}.status.NO_TRADE{{color:#b42318}}.status.WATCH{{color:#067647}}.status.NO_MARKET{{color:#6941c6}}.table-wrap{{overflow:auto;border:1px solid #d9e1ec;border-radius:8px;background:#fff}}table{{width:100%;min-width:920px;border-collapse:collapse}}th,td{{padding:12px;border-bottom:1px solid #e8edf3;text-align:left;vertical-align:top;font-size:13px;line-height:1.45}}th{{background:#f8fafc;color:#475467;font-size:11px;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0}}tr:last-child td{{border-bottom:0}}.model{{display:block;color:#175cd3;font-size:12px;margin-top:4px}}.badge{{display:inline-block;border-radius:999px;padding:4px 8px;background:#eef2f7;color:#344054;font-size:11px;font-weight:700}}.badge.exit_positions,.badge.block_new_position,.badge.NO_TRADE{{background:#fef3f2;color:#b42318}}.badge.allow_with_limit_order_and_duplicate_guard,.badge.WATCH{{background:#ecfdf3;color:#067647}}@media(max-width:640px){{main{{padding:16px}}header{{align-items:start;flex-direction:column}}}}</style></head>
 <body><main><header><div><h1>{_esc(title)}</h1><div class="sub">Real market, real weather, risk-gated simulation</div></div><div class="sub">Auto refresh: 30s | { _esc(snapshot.get('target_date','')) }</div></header>
 <section class="grid"><div class="card">System action<div class="metric status {action}">{_esc(action)}</div></div><div class="card">Cities / markets<div class="metric">{_esc(snapshot.get('cities_monitored',1))} / {_esc(snapshot.get('markets_found',0))}</div></div><div class="card">Cost basis<div class="metric">{_esc(_number(portfolio.get('cost_basis',0)))}</div></div><div class="card">Marked value<div class="metric">{_esc(_number(portfolio.get('market_value',0)))}</div></div><div class="card">Unrealized PnL<div class="metric {'positive' if portfolio.get('unrealized_pnl',0) >= 0 else 'negative'}">{_esc(_number(portfolio.get('unrealized_pnl',0)))}</div></div><div class="card">Stale positions<div class="metric">{_esc(portfolio.get('stale_positions',0))}</div></div></section>
-<h2>Real Weather Markets</h2><div class="table-wrap"><table><tr><th>City / Source</th><th>Market / Settlement</th><th>Real Weather / Model</th><th>Investment</th><th>Potential Profit</th><th>Maximum Loss</th><th>Action</th></tr>{''.join(rendered_rows)}</table></div></main></body></html>"""
+<h2>Discovery</h2><div class="sub">Scanned {_esc(snapshot.get('markets_scanned', 0))} markets | strict temperature {_esc(snapshot.get('temperature_markets_found', snapshot.get('strict_markets_found', 0)))} | cities {_esc(snapshot.get('cities_discovered', snapshot.get('cities_monitored', 0)))} | registered {_esc(snapshot.get('registered_cities', 0))} | unregistered {_esc(snapshot.get('unregistered_cities', 0))} | excluded {_esc(snapshot.get('excluded_markets', 0))} | pages {_esc(snapshot.get('pages_scanned', 0))} | completed {_esc(snapshot.get('scan_completed', False))}</div><h2>Real Weather Markets</h2><div class="table-wrap"><table><tr><th>Discovered city / source</th><th>Market / Settlement</th><th>Real Weather / Model</th><th>Investment</th><th>Potential Profit</th><th>Maximum Loss</th><th>Action</th></tr>{''.join(rendered_rows)}</table></div></main></body></html>"""
 
 
 def run_web_monitor(
@@ -229,6 +229,9 @@ def _monitor_rows(snapshot: dict) -> list[dict]:
                     "loss": _number(max(0.0, -curve.get("worst_case_pnl", 0))),
                     "action": (plan.get("decision") or {}).get("recommended_action", city_snapshot.get("recommended_action", "")),
                     "source_state": observation.get("status", plan.get("settlement_source_status", "")),
+                    "normalized_city": city_snapshot.get("normalized_city", city_snapshot.get("city", "")),
+                    "station_code": market.get("station_code", ""),
+                    "registry_status": market.get("city_registry_status", city_snapshot.get("city_registry_status", "")),
                 }
             )
     return rows

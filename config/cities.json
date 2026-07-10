@@ -1,0 +1,9 @@
+[
+  {"name":"New York","aliases":["NYC","Manhattan","Central Park","KNYC","JFK","LGA"],"latitude":40.7128,"longitude":-74.006,"timezone":"America/New_York","country":"US","preferred_unit":"F","official_source":"NWS","candidate_stations":["KNYC","JFK","LGA"],"enabled":true},
+  {"name":"Los Angeles","aliases":["LA","LAX"],"latitude":34.0522,"longitude":-118.2437,"timezone":"America/Los_Angeles","country":"US","preferred_unit":"F","official_source":"NWS","candidate_stations":["KLAX","LAX"],"enabled":true},
+  {"name":"London","aliases":["Heathrow","London City","EGLC","EGLL"],"latitude":51.5072,"longitude":-0.1276,"timezone":"Europe/London","country":"GB","preferred_unit":"C","official_source":"Met Office","candidate_stations":["EGLL","EGLC"],"enabled":true},
+  {"name":"Tokyo","aliases":["Haneda","RJTT"],"latitude":35.6762,"longitude":139.6503,"timezone":"Asia/Tokyo","country":"JP","preferred_unit":"C","official_source":"JMA","candidate_stations":["RJTT"],"enabled":true},
+  {"name":"Seoul","aliases":["Incheon","RKSI"],"latitude":37.5665,"longitude":126.978,"timezone":"Asia/Seoul","country":"KR","preferred_unit":"C","official_source":"KMA","candidate_stations":["RKSI"],"enabled":true},
+  {"name":"Hong Kong","aliases":["HKO","Hong Kong Observatory"],"latitude":22.3193,"longitude":114.1694,"timezone":"Asia/Hong_Kong","country":"HK","preferred_unit":"C","official_source":"Hong Kong Observatory","candidate_stations":["HKO"],"enabled":true},
+  {"name":"Taipei","aliases":["Songshan","RCSS"],"latitude":25.033,"longitude":121.5654,"timezone":"Asia/Taipei","country":"TW","preferred_unit":"C","official_source":"CWA","candidate_stations":["RCSS"],"enabled":true}
+]

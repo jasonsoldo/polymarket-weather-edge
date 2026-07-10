@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, replace
 from typing import Any, Optional
 
 from .http_client import get_json
+from .city_registry import load_city_registry, match_city
 
 
 GAMMA_API = "https://gamma-api.polymarket.com"
@@ -77,6 +78,7 @@ CITY_ALIASES = {
     "los angeles": ("los angeles", "la ", "lax", "klax", "downtown los angeles"),
     "hong kong": ("hong kong", "hko", "hong kong observatory"),
 }
+LAST_SCAN_STATS = {}
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,12 @@ class WeatherMarket:
     matched_keywords: tuple[str, ...]
     city_match_score: int
     market_type_guess: str
+    discovered_city: str = ""
+    normalized_city: str = ""
+    matched_alias: str = ""
+    station_code: str = ""
+    city_registry_status: str = "discovered_unregistered"
+    discovery_confidence: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -146,7 +154,12 @@ def fetch_weather_markets(
     query: str = "",
     pages: int = 3,
     include_broad_weather: bool = False,
+    max_pages: int = 5,
+    scan_all_pages: bool = False,
 ) -> list[WeatherMarket]:
+    global LAST_SCAN_STATS
+    LAST_SCAN_STATS = {"markets_scanned": 0, "pages_scanned": 0, "excluded_markets": 0, "scan_completed": False}
+    page_limit = min(max_pages, 100) if scan_all_pages else max(1, pages)
     if slug:
         return [
             _with_filter_metadata(market, city)
@@ -156,13 +169,13 @@ def fetch_weather_markets(
 
     markets = []
     for search_query in _search_queries(city, query):
-        markets.extend(_iter_public_search_markets(search_query, pages=pages, limit=min(limit, MAX_KEYSET_LIMIT)))
+        markets.extend(_iter_public_search_markets(search_query, pages=page_limit, limit=min(limit, MAX_KEYSET_LIMIT)))
 
     discovered_tag_id = tag_id or _first_weather_tag_id()
     if discovered_tag_id:
         markets.extend(
             _iter_event_markets(
-                pages=pages,
+                pages=page_limit,
                 limit=min(limit, MAX_KEYSET_LIMIT),
                 tag_id=discovered_tag_id,
                 discovery_source=f"events_keyset_tag_{discovered_tag_id}",
@@ -179,19 +192,28 @@ def fetch_weather_markets(
             )
         )
     if len(markets) < limit:
-        markets.extend(_iter_offset_event_markets(pages=pages, limit=min(limit, MAX_KEYSET_LIMIT)))
+        markets.extend(_iter_offset_event_markets(pages=page_limit, limit=min(limit, MAX_KEYSET_LIMIT)))
 
     filtered = []
     seen = set()
+    LAST_SCAN_STATS["markets_scanned"] = len(markets)
+    LAST_SCAN_STATS["pages_scanned"] = page_limit
     for market in markets:
-        if market.market_id in seen:
+        key = (market.condition_id or market.event_id, market.market_id)
+        if key in seen:
             continue
-        seen.add(market.market_id)
+        seen.add(key)
         if _include_market(market, city, query, include_broad_weather):
             filtered.append(_with_filter_metadata(market, city))
+        else:
+            LAST_SCAN_STATS["excluded_markets"] += 1
         if len(filtered) >= limit:
             break
+    LAST_SCAN_STATS["scan_completed"] = True
     return filtered
+
+def get_last_scan_stats():
+    return dict(LAST_SCAN_STATS)
 
 
 def fetch_markets_by_slug(slug: str) -> list[WeatherMarket]:
@@ -328,6 +350,9 @@ def _parse_market(event: dict[str, Any], market: dict[str, Any], discovery_sourc
         "tags": tuple(_tag_names(event, market)),
     }
     analysis = _analyze_market_text(base, "")
+    discovered_city, alias = _discover_city(base, event, market)
+    registry, _ = match_city(" ".join((discovered_city, alias)), load_city_registry())
+    station = _station_code(base, event, market)
     return WeatherMarket(
         event_id=str(event.get("id") or market.get("eventId") or ""),
         event_slug=base["event_slug"],
@@ -352,6 +377,12 @@ def _parse_market(event: dict[str, Any], market: dict[str, Any], discovery_sourc
         matched_keywords=tuple(analysis["matched_keywords"]),
         city_match_score=analysis["city_match_score"],
         market_type_guess=analysis["market_type_guess"],
+        discovered_city=discovered_city,
+        normalized_city=registry.get("name", discovered_city) if registry else discovered_city,
+        matched_alias=alias,
+        station_code=station,
+        city_registry_status="registered" if registry else "discovered_unregistered",
+        discovery_confidence=1.0 if registry else (0.75 if discovered_city else 0.0),
     )
 
 
@@ -512,6 +543,20 @@ def _guess_city(event: dict[str, Any], market: dict[str, Any]) -> str:
             city = re.split(r"\s+(?:on|by|be|will|before|after)\b|\?", city, maxsplit=1, flags=re.IGNORECASE)[0]
             return city.strip()
     return ""
+
+def _discover_city(parts, event, market):
+    text = _parts_haystack(parts)
+    item, alias = match_city(text, load_city_registry())
+    if item:
+        return item["name"], alias
+    guessed = _guess_city(event, market)
+    return guessed, guessed
+
+def _station_code(parts, event, market):
+    text = " ".join(str(parts.get(k) or "") for k in ("event_title", "question", "description", "event_slug", "market_slug"))
+    codes = re.findall(r"\b[A-Z]{3,5}\b", text)
+    known = {code for item in load_city_registry() for code in item.get("candidate_stations", [])}
+    return next((code for code in codes if code in known), "")
 
 
 def _tag_names(event: dict[str, Any], market: dict[str, Any]) -> list[str]:

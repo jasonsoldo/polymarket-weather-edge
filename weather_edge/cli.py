@@ -43,6 +43,8 @@ def main(argv=None) -> int:
     markets_parser.add_argument("--slug", default="")
     markets_parser.add_argument("--query", default="")
     markets_parser.add_argument("--pages", type=int, default=3)
+    markets_parser.add_argument("--max-pages", type=int, default=20)
+    markets_parser.add_argument("--scan-all-pages", action="store_true")
     markets_parser.add_argument("--include-broad-weather", action="store_true")
 
     sub.add_parser("live-tags")
@@ -64,6 +66,8 @@ def main(argv=None) -> int:
     monitor_parser.add_argument("--slug", default="")
     monitor_parser.add_argument("--query", default="")
     monitor_parser.add_argument("--pages", type=int, default=3)
+    monitor_parser.add_argument("--max-pages", type=int, default=20)
+    monitor_parser.add_argument("--scan-all-pages", action="store_true")
     monitor_parser.add_argument("--include-broad-weather", action="store_true")
 
     monitor_loop_parser = sub.add_parser("live-monitor-loop")
@@ -91,6 +95,8 @@ def main(argv=None) -> int:
     monitor_all_parser.add_argument("--limit", type=int, default=100)
     monitor_all_parser.add_argument("--books", action="store_true")
     monitor_all_parser.add_argument("--pages", type=int, default=3)
+    monitor_all_parser.add_argument("--max-pages", type=int, default=20)
+    monitor_all_parser.add_argument("--scan-all-pages", action="store_true")
     monitor_all_parser.add_argument("--include-broad-weather", action="store_true")
     monitor_all_parser.add_argument("--max-runs", type=int)
     monitor_all_parser.add_argument("--history-db", default="data/market_history.sqlite")
@@ -182,7 +188,7 @@ def main(argv=None) -> int:
         return 0
 
     if args.command == "live-markets":
-        from .market_scanner import fetch_weather_markets
+        from .market_scanner import fetch_weather_markets, get_last_scan_stats
 
         markets = [
             market.to_dict()
@@ -193,10 +199,12 @@ def main(argv=None) -> int:
                 slug=args.slug,
                 query=args.query,
                 pages=args.pages,
+                max_pages=args.max_pages,
+                scan_all_pages=args.scan_all_pages,
                 include_broad_weather=args.include_broad_weather,
             )
         ]
-        payload = {"markets_found": len(markets), "markets": markets}
+        payload = {"markets_found": len(markets), "markets": markets, **get_last_scan_stats()}
         if not markets and args.city and not args.include_broad_weather:
             payload["reason"] = "no strict city temperature markets found"
         print(json.dumps(payload, indent=2))
@@ -228,6 +236,8 @@ def main(argv=None) -> int:
             slug=args.slug,
             query=args.query,
             pages=args.pages,
+            max_pages=args.max_pages,
+            scan_all_pages=args.scan_all_pages,
             include_broad_weather=args.include_broad_weather,
         )
         print(json.dumps(snapshot, indent=2))
@@ -247,6 +257,8 @@ def main(argv=None) -> int:
             slug=args.slug,
             query=args.query,
             pages=args.pages,
+            max_pages=args.max_pages,
+            scan_all_pages=args.scan_all_pages,
             include_broad_weather=args.include_broad_weather,
             max_runs=args.max_runs,
             history_db=args.history_db,
@@ -264,6 +276,8 @@ def main(argv=None) -> int:
             include_books=args.books,
             pages=args.pages,
             include_broad_weather=args.include_broad_weather,
+            max_pages=args.max_pages,
+            scan_all_pages=args.scan_all_pages,
             max_runs=args.max_runs,
             history_db=args.history_db,
             alerts_log=args.alerts_log,
