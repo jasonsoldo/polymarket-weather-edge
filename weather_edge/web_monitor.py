@@ -27,6 +27,71 @@ def render_dashboard(snapshot: dict, history: list[dict]) -> str:
     return _render_monitor(snapshot, "WeatherEdge Monitor")
 
 
+MODULES = {
+    "/": "overview", "/overview": "overview", "/cities": "cities", "/markets": "markets",
+    "/weather-sources": "weather", "/settlement-sources": "settlement", "/candidates": "candidates",
+    "/positions": "positions", "/risk": "risk", "/alerts": "alerts", "/logs": "logs", "/settings": "settings",
+}
+
+def render_module_page(snapshot: dict, path: str, history: list[dict]) -> str:
+    module = MODULES.get(path, "overview")
+    if module == "overview":
+        return render_dashboard(snapshot, history)
+    title = {"cities":"Cities", "markets":"Markets", "weather":"Weather Sources", "settlement":"Settlement Sources", "candidates":"Candidates", "positions":"Positions", "risk":"Risk", "alerts":"Alerts", "logs":"Logs", "settings":"Settings"}.get(module, module.title())
+    cards = _module_rows(snapshot, module, history)
+    return _module_shell(title, snapshot, cards)
+
+def _module_shell(title, snapshot, body):
+    nav = " ".join(f"<a href='{path}'>{label}</a>" for path, label in (("/overview","Overview"),("/cities","Cities"),("/markets","Markets"),("/weather-sources","Weather Sources"),("/settlement-sources","Settlement Sources"),("/candidates","Candidates"),("/positions","Positions"),("/risk","Risk"),("/alerts","Alerts"),("/logs","Logs"),("/settings","Settings")))
+    return f"""<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='refresh' content='30'><title>WeatherEdge { _esc(title) }</title><style>body{{margin:0;background:#f4f7fb;color:#172033;font:14px Arial}}main{{max-width:1500px;margin:auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:end}}nav{{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}}nav a{{padding:8px 11px;border-radius:6px;background:#fff;border:1px solid #d9e1ec;color:#175cd3;text-decoration:none}}.panel{{background:#fff;border:1px solid #d9e1ec;border-radius:8px;padding:16px;overflow:auto}}.item{{padding:12px 0;border-bottom:1px solid #e8edf3}}.item:last-child{{border:0}}.bad{{color:#b42318;font-weight:700}}.good{{color:#067647;font-weight:700}}.muted{{color:#667085}}table{{width:100%;border-collapse:collapse;min-width:800px}}th,td{{padding:10px;border-bottom:1px solid #e8edf3;text-align:left;vertical-align:top}}th{{color:#475467;background:#f8fafc;position:sticky;top:0}}</style></head><body><main><header><div><h1>WeatherEdge / {_esc(title)}</h1><div class='muted'>Risk-gated simulation | last refresh {_esc(snapshot.get('observed_at',''))}</div></div><strong class='{ 'bad' if snapshot.get('recommended_action') == 'NO_TRADE' else 'good' }'>{_esc(snapshot.get('recommended_action','UNKNOWN'))}</strong></header><nav>{nav}</nav><section class='panel'>{body}</section></main></body></html>"""
+
+def _module_rows(snapshot, module, history):
+    cities = snapshot.get("cities", [snapshot])
+    if module == "cities":
+        return "".join(f"<div class='item'><h3>{_esc(c.get('city',''))}</h3>markets {c.get('markets_found',0)} | confidence {_esc((c.get('weather') or {}).get('confidence',''))} | disagreement {_esc((c.get('weather') or {}).get('disagreement',''))}<br><span class='muted'>{_esc(c.get('city_registry_status','registered'))} | {_esc(c.get('recommended_action',''))} | {_esc((c.get('risk_reasons') or [c.get('block_reason','')])[0])}</span></div>" for c in cities) or "No discovered cities"
+    if module == "markets":
+        rows = _monitor_rows(snapshot)
+        return _table(("City","Market","Settlement","Investment","Action"), [(r["city"], r["market"], r["settlement"], r["investment"], r["action"]) for r in rows]) or "No strict temperature markets"
+    if module == "weather":
+        return _weather_module(cities)
+    if module == "settlement":
+        items = []
+        for city in cities:
+            for event in city.get("markets", []):
+                plan = event.get("event_bucket_plan") or {}
+                rule = plan.get("settlement_rule") or {}
+                status = plan.get("settlement_source_status", "unknown")
+                items.append((city.get("city",""), rule.get("settlement_source",""), rule.get("target_station_or_data_source",""), status, (plan.get("decision") or {}).get("recommended_action","")))
+        return _table(("City","Source","Station","API status","Action"), items) or "No settlement rules parsed"
+    if module == "positions":
+        p = snapshot.get("portfolio") or {}
+        return f"<h2>Portfolio</h2><p>Cost basis: {p.get('cost_basis',0)} | Marked value: {p.get('market_value',0)} | Unrealized PnL: {p.get('unrealized_pnl',0)} | Stale: {p.get('stale_positions',0)}</p>"
+    if module == "risk":
+        reasons = snapshot.get("risk_reasons", [])
+        return f"<h2>Risk mode: STRICT</h2><p>System action: <b>{_esc(snapshot.get('recommended_action',''))}</b></p>" + "".join(f"<div class='item bad'>{_esc(reason)}</div>" for reason in reasons) or "No risk blockers"
+    if module == "alerts":
+        alerts = [item for item in history if item.get("alert") or item.get("severity") or item.get("recommended_action") == "NO_TRADE"]
+        return "".join(f"<div class='item'><b>{_esc(a.get('severity','WARNING'))}</b> {_esc(a.get('reason') or a.get('risk_reasons') or a.get('recommended_action',''))}</div>" for a in alerts[-30:]) or "No alerts"
+    if module == "logs":
+        return _table(("Observed at","Mode","Action","Markets"), [(x.get("observed_at",""),x.get("mode",""),x.get("recommended_action",""),x.get("markets_found",0)) for x in history[-50:]]) or "No logs"
+    if module == "candidates":
+        return "<p>Only risk-approved candidates are shown here. Current system action: <b>" + _esc(snapshot.get("recommended_action","")) + "</b></p>" + _module_rows(snapshot, "markets", history)
+    if module == "settings":
+        return "<p>Read-only dashboard. Trading remains disabled unless all explicit live execution guards are enabled.</p><p>Refresh: 30s | Raw snapshot is available only through the existing debug API.</p>"
+    return ""
+
+def _table(headers, rows):
+    if not rows: return ""
+    return "<table><tr>" + "".join(f"<th>{_esc(h)}</th>" for h in headers) + "</tr>" + "".join("<tr>" + "".join(f"<td>{_esc(v)}</td>" for v in row) + "</tr>" for row in rows) + "</table>"
+
+def _weather_module(cities):
+    rows=[]
+    for city in cities:
+        for f in (city.get("weather") or {}).get("forecasts", []):
+            rows.append((city.get("city",""), f.get("source",""), f.get("max_temp",""), f.get("min_temp",""), f.get("updated_at","")))
+    return _table(("City","Source","Max","Min","Updated"), rows) or "No weather data"
+
+
 def render_all_cities_dashboard(snapshot: dict, history: list[dict]) -> str:
     return _render_monitor(snapshot, "WeatherEdge All Cities Monitor")
 
@@ -110,9 +175,21 @@ def _make_handler(
             if parsed.path == "/api/snapshot":
                 self._send_json(self._snapshot())
                 return
+            if parsed.path.startswith("/api/"):
+                self._send_json(_module_api(self._snapshot(), parsed.path, read_recent_snapshots(log_path, 50)))
+                return
             if parsed.path == "/":
                 snapshot = self._snapshot()
                 body = render_dashboard(snapshot, read_recent_snapshots(log_path, 20)).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if parsed.path in MODULES:
+                snapshot = self._snapshot()
+                body = render_module_page(snapshot, parsed.path, read_recent_snapshots(log_path, 50)).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -166,9 +243,21 @@ def _make_all_cities_handler(
             if parsed.path == "/api/snapshot":
                 self._send_json(self._snapshot())
                 return
+            if parsed.path.startswith("/api/"):
+                self._send_json(_module_api(self._snapshot(), parsed.path, read_recent_snapshots(log_path, 50)))
+                return
             if parsed.path == "/":
                 snapshot = self._snapshot()
                 body = render_dashboard(snapshot, read_recent_snapshots(log_path, 20)).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if parsed.path in MODULES:
+                snapshot = self._snapshot()
+                body = render_module_page(snapshot, parsed.path, read_recent_snapshots(log_path, 50)).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -201,6 +290,21 @@ def _make_all_cities_handler(
 
 def _esc(value) -> str:
     return html.escape(str(value), quote=True)
+
+def _module_api(snapshot, path, history):
+    mapping = {
+        "/api/overview": snapshot,
+        "/api/cities": {"cities": snapshot.get("cities", [])},
+        "/api/markets": {"markets": snapshot.get("strict_markets", []), "markets_found": snapshot.get("markets_found", 0)},
+        "/api/weather-sources": {"cities": [{"city": c.get("city", ""), "weather": c.get("weather", {})} for c in snapshot.get("cities", [snapshot])]},
+        "/api/settlement-sources": {"cities": snapshot.get("cities", [])},
+        "/api/candidates": {"candidates": _monitor_rows(snapshot)},
+        "/api/positions": {"portfolio": snapshot.get("portfolio", {})},
+        "/api/risk": {"recommended_action": snapshot.get("recommended_action", ""), "risk_reasons": snapshot.get("risk_reasons", [])},
+        "/api/alerts": {"alerts": [x for x in history if x.get("severity") or x.get("alert")]},
+        "/api/logs": {"logs": history},
+    }
+    return mapping.get(path, {"error": "unknown module"})
 
 
 def _monitor_rows(snapshot: dict) -> list[dict]:
