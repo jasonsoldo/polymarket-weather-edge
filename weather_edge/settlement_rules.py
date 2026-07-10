@@ -87,6 +87,10 @@ def parse_bucket(label: str) -> BucketSpec:
 
 def _parse_unit(text: str) -> str:
     lower = text.lower()
+    if "°f" in lower:
+        return "F"
+    if "°c" in lower:
+        return "C"
     if "°f" in lower or "ºf" in lower or re.search(r"\d\s*f\b", lower):
         return "F"
     if "°c" in lower or "ºc" in lower or re.search(r"\d\s*c\b", lower):
@@ -111,9 +115,16 @@ def _parse_market_type(lower_text: str, market_type_guess: str = "") -> str:
 
 
 def _parse_source(text: str, resolution_source: str) -> str:
+    lower = text.lower()
+    resolution_lower = resolution_source.lower()
+    if "wunderground.com" in resolution_lower or "weather underground" in resolution_lower:
+        return "Weather Underground"
+    if "hong kong observatory" in resolution_lower:
+        return "Hong Kong Observatory"
+    if "weather.gov" in resolution_lower or "national weather service" in resolution_lower:
+        return "NWS"
     if resolution_source:
         return resolution_source.strip()
-    lower = text.lower()
     if "national weather service" in lower or "nws" in lower:
         return "NWS"
     if "noaa" in lower:
@@ -162,6 +173,8 @@ def _parse_station(text: str, source: str) -> str:
     named_station = re.search(r"([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3}) (?:station|weather station)", text)
     if named_station:
         return named_station.group(1)
+    if source == "Hong Kong Observatory":
+        return "HKO"
     if source:
         return source
     return ""

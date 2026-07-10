@@ -26,6 +26,7 @@ class SettlementAndProbabilityTests(unittest.TestCase):
         self.assertEqual(rule.settlement_source, "Weather Underground")
         self.assertEqual(rule.target_station_or_data_source, "EGLC")
         self.assertEqual(rule.timezone, "Europe/London")
+        self.assertEqual(rule.measurement_unit, "C")
     def test_parse_bucket_bounds(self):
         self.assertEqual(parse_bucket("86F or below").upper, 86)
         self.assertIsNone(parse_bucket("86F or below").lower)

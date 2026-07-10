@@ -109,7 +109,7 @@ def _module_rows(snapshot, module, history):
         return "".join(f"<div class='item'><h3>{_esc(c.get('city',''))}</h3>markets {c.get('markets_found',0)} | confidence {_esc((c.get('weather') or {}).get('confidence',''))} | disagreement {_esc((c.get('weather') or {}).get('disagreement',''))}<br><span class='muted'>{_esc(c.get('city_registry_status','registered'))} | {_esc(c.get('recommended_action',''))} | {_esc((c.get('risk_reasons') or [c.get('block_reason','')])[0])}</span></div>" for c in cities) or "No discovered cities"
     if module == "markets":
         rows = _monitor_rows(snapshot)
-        return _table(("City","Market","Settlement","Investment","Action"), [(r["city"], r["market"], r["settlement"], r["investment"], r["action"]) for r in rows]) or "No strict temperature markets"
+        return _table(("City","Market","Settlement","Status","Investment","Action","Block reason"), [(r["city"], r["market"], r["settlement"], r["source_state"], r["investment"], r["action"], r["block_reason"]) for r in rows]) or "No strict temperature markets"
     if module == "weather":
         return _weather_module(cities)
     if module == "settlement":
@@ -394,6 +394,7 @@ def _monitor_rows(snapshot: dict) -> list[dict]:
                     "normalized_city": city_snapshot.get("normalized_city", city_snapshot.get("city", "")),
                     "station_code": market.get("station_code", ""),
                     "registry_status": market.get("city_registry_status", city_snapshot.get("city_registry_status", "")),
+                    "block_reason": " | ".join((plan.get("decision") or {}).get("reasons", [])) or city_snapshot.get("block_reason", ""),
                 }
             )
     return rows
