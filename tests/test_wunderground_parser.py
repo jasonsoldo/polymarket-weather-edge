@@ -24,6 +24,10 @@ class WundergroundParserTests(unittest.TestCase):
         self.assertEqual(result.status, "wu_browser_supported")
         self.assertAlmostEqual(result.daily_high, 86.0)
 
+    def test_does_not_treat_unrelated_numbers_as_low_temperature(self):
+        result = parse_wunderground_html("<span>High 86 °F</span><span>Low 70 °F</span><span>Humidity 16%</span>", "EGLC", "2026-07-01", "C")
+        self.assertAlmostEqual(result.daily_low, (70 - 32) * 5 / 9)
+
 
 if __name__ == "__main__":
     unittest.main()

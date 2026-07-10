@@ -12,9 +12,15 @@ def parse_wunderground_html(html: str, station: str, target_date: str, unit: str
         return WundergroundSnapshot("wu_unavailable", station, target_date, None, None, unit, source_url=source_url, raw_payload_hash=hashlib.sha256(html.encode()).hexdigest(), adapter_version=ADAPTER_VERSION, reason="CAPTCHA or access-control page")
     requested = unit.upper().replace("°", "")
     displayed = "F" if "°f" in lower and "°c" not in lower else "C" if "°c" in lower and "°f" not in lower else requested
+    text = re.sub(r"<[^>]+>", " ", html)
     def find(label):
-        match = re.search(rf"{label}\s*[:<\s][^0-9-]*(-?\d+(?:\.\d+)?)", html, re.I)
-        return float(match.group(1)) if match else None
+        match = re.search(rf"\b{label}\b[^\d-]{{0,80}}(-?\d+(?:\.\d+)?)\s*°?\s*([CF])\b", text, re.I)
+        if not match:
+            return None
+        value, found_unit = float(match.group(1)), match.group(2).upper()
+        if found_unit != displayed:
+            return None
+        return value
     high, low = find("high"), find("low")
     if high is not None and displayed != requested:
         convert = lambda value: (value - 32.0) * 5.0 / 9.0 if displayed == "F" else value * 9.0 / 5.0 + 32.0
