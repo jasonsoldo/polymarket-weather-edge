@@ -7,7 +7,7 @@ from .orderbook import BookSummary
 from .pnl_curve import BucketInput, PnLCurve, build_pnl_curve
 from .position_manager import Position
 from .risk_manager import MarketState, RiskConfig, RiskDecision, evaluate_trade_plan
-from .settlement_source import settlement_source_capability
+from .settlement_source import settlement_source_capability, settlement_status_allows_scoring
 from .settlement_rules import BucketSpec, SettlementRule, parse_settlement_rule
 from .strategy_config import StrategyConfig
 from .strategy_planner import PlannedOrder
@@ -139,9 +139,9 @@ def build_event_trade_plan(
         current_total_exposure=current_total_exposure,
     )
     decision = evaluate_trade_plan(curve, state, risk)
-    if not complete or rule.reasons or source_status != "supported_official":
+    if not complete or rule.reasons or not settlement_status_allows_scoring(source_status):
         reasons = list(decision.reasons) + list(rule.reasons) + list(dict.fromkeys(completeness_reasons))
-        if source_status != "supported_official":
+        if not settlement_status_allows_scoring(source_status):
             reasons.append(source_status)
         decision = RiskDecision(False, "block_new_position", tuple(dict.fromkeys(reasons)))
     return EventTradePlan(

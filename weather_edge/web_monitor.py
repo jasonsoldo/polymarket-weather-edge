@@ -119,8 +119,9 @@ def _module_rows(snapshot, module, history):
                 plan = event.get("event_bucket_plan") or {}
                 rule = plan.get("settlement_rule") or {}
                 status = plan.get("settlement_source_status", "unknown")
-                items.append((city.get("city",""), rule.get("settlement_source",""), rule.get("target_station_or_data_source",""), status, (plan.get("decision") or {}).get("recommended_action","")))
-        return _table(("City","Source","Station","API status","Action"), items) or "No settlement rules parsed"
+                observation = event.get("settlement_observation") or {}
+                items.append((city.get("city",""), "wunderground" if "wunderground" in rule.get("settlement_source", "").lower() else rule.get("settlement_source",""), rule.get("target_station_or_data_source",""), status, observation.get("observed_at", ""), observation.get("max_temp", ""), observation.get("reason", ""), (plan.get("decision") or {}).get("recommended_action","")))
+        return _table(("City","Adapter","Station","Status","Last fetch","Page/API value","Block reason","Action"), items) or "No settlement rules parsed"
     if module == "positions":
         p = snapshot.get("portfolio") or {}
         return f"<h2>Portfolio</h2><p>Cost basis: {p.get('cost_basis',0)} | Marked value: {p.get('market_value',0)} | Unrealized PnL: {p.get('unrealized_pnl',0)} | Stale: {p.get('stale_positions',0)}</p>"

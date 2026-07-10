@@ -12,6 +12,7 @@ from .risk_manager import RiskConfig, evaluate_trade_plan
 from .simulator import simulate_settlement
 from .storage import init_db, save_analysis
 from .strategy_config import load_strategy_config
+from .settlement_sources.wunderground_browser import fetch_wunderground_browser
 
 
 def main(argv=None) -> int:
@@ -54,6 +55,15 @@ def main(argv=None) -> int:
     weather_parser.add_argument("--lat", type=float, required=True)
     weather_parser.add_argument("--lon", type=float, required=True)
     weather_parser.add_argument("--date", required=True)
+
+    wu_parser = sub.add_parser("wunderground-fetch")
+    wu_parser.add_argument("--station", required=True)
+    wu_parser.add_argument("--date", required=True)
+    wu_parser.add_argument("--unit", choices=("C", "F"), default="C")
+    wu_parser.add_argument("--url", required=True)
+    wu_parser.add_argument("--artifact-dir", default="data/wunderground_artifacts")
+    wu_parser.add_argument("--timeout-ms", type=int, default=30000)
+    wu_parser.add_argument("--retries", type=int, default=2)
 
     monitor_parser = sub.add_parser("live-monitor")
     monitor_parser.add_argument("--city", required=True)
@@ -154,6 +164,11 @@ def main(argv=None) -> int:
     reconcile_parser.add_argument("--positions-db", default="data/positions.sqlite")
 
     args = parser.parse_args(argv)
+
+    if args.command == "wunderground-fetch":
+        result = fetch_wunderground_browser(args.url, args.station, args.date, args.unit, args.artifact_dir, args.timeout_ms, args.retries)
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.status in {"wu_browser_supported", "wu_verified"} else 2
 
     if args.command == "init-db":
         init_db(args.db)

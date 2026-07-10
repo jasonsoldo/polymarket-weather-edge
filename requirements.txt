@@ -1,3 +1,4 @@
 # Core dry-run runtime uses Python standard library only.
 # Install py-clob-client-v2 on VPS only when intentionally enabling live trading.
 # py-clob-client-v2>=1.0.1
+# playwright>=1.45.0  # optional, required only for Wunderground browser fallback

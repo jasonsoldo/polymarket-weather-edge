@@ -24,13 +24,13 @@ class SettlementSourceTests(unittest.TestCase):
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
-    def test_wunderground_is_explicitly_unsupported(self):
+    def test_wunderground_requires_adapter_before_verification(self):
         rule = _rule("Wunderground", "EGLC", "2020-07-10")
 
         result = fetch_settlement_observation(rule)
 
-        self.assertEqual(settlement_source_capability(rule), "unsupported_no_official_api")
-        self.assertEqual(result.status, "unsupported_no_official_api")
+        self.assertEqual(settlement_source_capability(rule), "pending_wu_adapter")
+        self.assertEqual(result.status, "pending_wu_adapter")
 
     def test_hko_reads_official_daily_max_and_min(self):
         rule = _rule("Hong Kong Observatory", "HKO", "2020-07-10")
