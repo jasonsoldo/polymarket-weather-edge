@@ -95,4 +95,8 @@ def _select_history_date(page, target_date: str) -> None:
     submit = page.locator("lib-date-selector input[type='submit'], lib-date-selector button").first
     if submit.count():
         submit.click()
-        page.wait_for_load_state("networkidle")
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=10000)
+        except Exception:
+            pass
+        page.wait_for_timeout(1500)
