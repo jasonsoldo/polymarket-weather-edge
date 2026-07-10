@@ -39,14 +39,14 @@ def parse_settlement_rule(market: WeatherMarket) -> SettlementRule:
     text = " ".join([market.event_title, market.question, market.description, market.resolution_source])
     lower_text = text.lower()
     unit = _parse_unit(text)
-    market_type = _parse_market_type(lower_text)
+    market_type = _parse_market_type(lower_text, market.market_type_guess)
     source = _parse_source(text, market.resolution_source)
     timezone = _parse_timezone(text)
     station = _parse_station(text, source)
     rounding = _parse_rounding(lower_text)
     city = market.city_guess or _parse_city(market.question)
     date = _parse_date(market.question, market.end_date)
-    buckets = tuple(parse_bucket(label) for label in market.outcomes)
+    buckets = _parse_market_buckets(market)
     reasons = _rule_reasons(city, date, market_type, source, unit, timezone, station, buckets)
     confidence = max(0.0, 1.0 - 0.12 * len(reasons))
     return SettlementRule(
@@ -86,6 +86,10 @@ def parse_bucket(label: str) -> BucketSpec:
 
 def _parse_unit(text: str) -> str:
     lower = text.lower()
+    if "°f" in lower or "ºf" in lower or re.search(r"\d\s*f\b", lower):
+        return "F"
+    if "°c" in lower or "ºc" in lower or re.search(r"\d\s*c\b", lower):
+        return "C"
     if "fahrenheit" in lower or "°f" in lower or re.search(r"\bf\b", text):
         return "F"
     if "celsius" in lower or "°c" in lower or re.search(r"\bc\b", text):
@@ -93,7 +97,11 @@ def _parse_unit(text: str) -> str:
     return ""
 
 
-def _parse_market_type(lower_text: str) -> str:
+def _parse_market_type(lower_text: str, market_type_guess: str = "") -> str:
+    if market_type_guess == "high_temp":
+        return "max_temp"
+    if market_type_guess == "low_temp":
+        return "min_temp"
     if " high " in f" {lower_text} " or "maximum" in lower_text or "max temp" in lower_text:
         return "max_temp"
     if " low " in f" {lower_text} " or "minimum" in lower_text or "min temp" in lower_text:
@@ -111,6 +119,8 @@ def _parse_source(text: str, resolution_source: str) -> str:
         return "NOAA"
     if "open-meteo" in lower:
         return "Open-Meteo"
+    if "hong kong observatory" in lower:
+        return "Hong Kong Observatory"
     return ""
 
 
@@ -124,6 +134,8 @@ def _parse_timezone(text: str) -> str:
         return "America/Denver"
     if " pt" in lower or " pacific time" in lower:
         return "America/Los_Angeles"
+    if "hong kong" in lower or " hkt" in lower:
+        return "Asia/Hong_Kong"
     return ""
 
 
@@ -140,6 +152,8 @@ def _parse_station(text: str, source: str) -> str:
 
 
 def _parse_rounding(lower_text: str) -> str:
+    if "one decimal place" in lower_text or "nearest tenth" in lower_text:
+        return "nearest_tenth"
     if "nearest whole" in lower_text or "rounded to the nearest" in lower_text:
         return "nearest_integer"
     if "floor" in lower_text or "round down" in lower_text:
@@ -147,6 +161,26 @@ def _parse_rounding(lower_text: str) -> str:
     if "ceil" in lower_text or "round up" in lower_text:
         return "ceil"
     return "nearest_integer"
+
+
+def _parse_market_buckets(market: WeatherMarket) -> tuple[BucketSpec, ...]:
+    """Polymarket temperature events are commonly one Yes/No market per bucket."""
+    if len(market.outcomes) == 2 and {item.lower() for item in market.outcomes} == {"yes", "no"}:
+        label = _bucket_label_from_question(market.question)
+        if label:
+            bucket = parse_bucket(label)
+            if bucket.lower is not None or bucket.upper is not None:
+                return (bucket,)
+    return tuple(parse_bucket(label) for label in market.outcomes)
+
+
+def _bucket_label_from_question(question: str) -> str:
+    match = re.search(
+        r"\b(?:be|of)\s+(-?\d+(?:\.\d+)?\s*(?:°|º)?\s*[CF](?:\s+or\s+(?:below|less|more|higher))?)",
+        question,
+        flags=re.IGNORECASE,
+    )
+    return match.group(1).strip() if match else ""
 
 
 def _parse_city(question: str) -> str:

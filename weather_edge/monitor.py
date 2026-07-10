@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .bucket_probability import build_bucket_probabilities
+from .event_bucket_analysis import build_event_trade_plan, group_event_markets
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
 from .risk_manager import RiskConfig, weather_data_block
-from .settlement_rules import parse_settlement_rule
+from .strategy_config import StrategyConfig
 from .weather_sources import fetch_weather_snapshot
 
 DEFAULT_CITY_COORDS = {
@@ -45,23 +45,33 @@ def build_live_snapshot(
     )
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
     risk_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, RiskConfig())
-    market_rows = []
+    books = {}
     for market in markets:
-        row = market.to_dict()
+        for token_id in market.token_ids:
+            try:
+                books[token_id] = fetch_book_summary(token_id)
+            except RuntimeError:
+                continue
+    market_rows = []
+    for event_markets in group_event_markets(markets):
+        row = {
+            "event_id": event_markets[0].event_id,
+            "event_slug": event_markets[0].event_slug,
+            "markets": [market.to_dict() for market in event_markets],
+        }
         try:
-            rule = parse_settlement_rule(market)
-            row["settlement_rule"] = rule.to_dict()
-            row["bucket_probabilities"] = build_bucket_probabilities(rule, weather, market).to_dict()
+            plan = build_event_trade_plan(
+                event_markets, weather, StrategyConfig(), RiskConfig(), books
+            )
+            row["event_bucket_plan"] = plan.to_dict()
         except ValueError as exc:
-            row["settlement_rule_error"] = str(exc)
-            row["bucket_probabilities"] = None
+            row["event_bucket_plan_error"] = str(exc)
         row["books"] = []
         if include_books:
-            for token_id in market.token_ids:
-                try:
-                    row["books"].append(fetch_book_summary(token_id).to_dict())
-                except RuntimeError as exc:
-                    row["books"].append({"token_id": token_id, "error": str(exc)})
+            for market in event_markets:
+                for token_id in market.token_ids:
+                    book = books.get(token_id)
+                    row["books"].append(book.to_dict() if book else {"token_id": token_id, "error": "book_unavailable"})
         market_rows.append(row)
 
     snapshot = {
@@ -75,8 +85,7 @@ def build_live_snapshot(
         "notes": [
             "read_only_snapshot",
             "no_orders_are_created",
-            "model probabilities are not generated yet",
-            "settlement rules still require market-rule parsing before trading",
+            "event-level settlement rules, probabilities, PnL curves, and death gaps are evaluated",
             "if markets_found is zero, check tag_id or slug from Polymarket UI/API",
         ],
     }

@@ -1,6 +1,9 @@
 import unittest
 
-from weather_edge.bucket_probability import build_bucket_probabilities
+from weather_edge.bucket_probability import build_bucket_probabilities, build_probability_model
+from weather_edge.event_bucket_analysis import build_event_trade_plan
+from weather_edge.risk_manager import RiskConfig
+from weather_edge.strategy_config import StrategyConfig
 from weather_edge.market_scanner import WeatherMarket
 from weather_edge.settlement_rules import parse_bucket, parse_settlement_rule
 from weather_edge.weather_sources import DailyForecast, WeatherSnapshot
@@ -57,6 +60,34 @@ class SettlementAndProbabilityTests(unittest.TestCase):
         self.assertGreater(curve.buckets[2].model_probability, 0.1)
         self.assertAlmostEqual(curve.buckets[2].edge, curve.buckets[2].model_probability - 0.30)
 
+    def test_yes_no_temperature_market_parses_question_bucket_and_converts_units(self):
+        market = _hong_kong_market("26°C")
+        rule = parse_settlement_rule(market)
+        weather = WeatherSnapshot(
+            "Hong Kong", 22.3, 114.2, "2026-07-10",
+            (DailyForecast("open_meteo", "2026-07-10", 78.8, 73.0, "F", "1", "", "Asia/Hong_Kong", "best", "grid"),),
+            None, 0.80,
+        )
+
+        self.assertEqual(rule.measurement_unit, "C")
+        self.assertEqual(rule.buckets[0].label, "26°C")
+        self.assertAlmostEqual(build_probability_model(rule, weather).mean, 26.0, places=1)
+
+    def test_event_plan_has_complete_pnl_rows_and_death_gap(self):
+        markets = [_hong_kong_market("25°C or below"), _hong_kong_market("26°C"), _hong_kong_market("27°C or higher")]
+        weather = WeatherSnapshot(
+            "Hong Kong", 22.3, 114.2, "2026-07-10",
+            (DailyForecast("open_meteo", "2026-07-10", 78.8, 73.0, "F", "1", "", "Asia/Hong_Kong", "best", "grid"),),
+            None, 0.80,
+        )
+
+        plan = build_event_trade_plan(markets, weather, StrategyConfig(max_buckets_to_buy=1), RiskConfig())
+
+        self.assertEqual(len(plan.curve.rows), 3)
+        self.assertTrue(plan.bucket_set_complete)
+        self.assertGreater(plan.curve.max_uncovered_probability, 0.08)
+        self.assertTrue(plan.curve.death_gaps)
+
 
 def _market():
     return WeatherMarket(
@@ -86,5 +117,19 @@ def _market():
         excluded_reason="",
         matched_keywords=("high temperature",),
         city_match_score=2,
+        market_type_guess="high_temp",
+    )
+
+
+def _hong_kong_market(bucket: str):
+    return WeatherMarket(
+        event_id="hko-event", event_slug="highest-temperature-in-hong-kong", event_title="Highest temperature in Hong Kong on July 10?",
+        market_id=f"hko-{bucket}", condition_id="", market_slug=f"hko-{bucket}",
+        question=f"Will the highest temperature in Hong Kong be {bucket} on July 10?",
+        description="Resolves using Hong Kong Observatory Absolute Daily Max (deg. C).",
+        end_date="2026-07-10T23:59:00Z", active=True, closed=False, outcomes=("Yes", "No"),
+        outcome_prices=(0.20, 0.80), token_ids=(f"yes-{bucket}", f"no-{bucket}"),
+        resolution_source="Hong Kong Observatory", tags=("Weather",), city_guess="Hong Kong", discovery_source="test",
+        is_temperature_market=True, excluded_reason="", matched_keywords=("highest temperature",), city_match_score=2,
         market_type_guess="high_temp",
     )

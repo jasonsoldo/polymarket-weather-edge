@@ -52,22 +52,9 @@ def build_bucket_probabilities(
     weather: WeatherSnapshot,
     market: WeatherMarket,
 ) -> BucketProbabilityCurve:
-    values = _forecast_values(rule, weather)
-    if not values:
-        raise ValueError("no forecast values available for market type")
+    model = build_probability_model(rule, weather)
 
-    mean = sum(values) / len(values)
-    stddev = _stddev(rule, weather, values)
-    model = ProbabilityModel(
-        mean=mean,
-        standard_deviation=stddev,
-        source_count=len(values),
-        disagreement=weather.disagreement,
-        confidence=min(rule.confidence, weather.confidence),
-        target_temperature_type=rule.market_type,
-    )
-
-    raw_probs = [_bucket_probability(bucket, mean, stddev, rule.rounding_rule) for bucket in rule.buckets]
+    raw_probs = [bucket_model_probability(bucket, model, rule.rounding_rule) for bucket in rule.buckets]
     total = sum(raw_probs)
     normalized = [prob / total for prob in raw_probs] if total > 0 else raw_probs
     rows = []
@@ -91,12 +78,31 @@ def build_bucket_probabilities(
     )
 
 
+def build_probability_model(rule: SettlementRule, weather: WeatherSnapshot) -> ProbabilityModel:
+    values = _forecast_values(rule, weather)
+    if not values:
+        raise ValueError("no forecast values available for market type")
+    mean = sum(values) / len(values)
+    return ProbabilityModel(
+        mean=mean,
+        standard_deviation=_stddev(rule, weather, values),
+        source_count=len(values),
+        disagreement=weather.disagreement,
+        confidence=min(rule.confidence, weather.confidence),
+        target_temperature_type=rule.market_type,
+    )
+
+
+def bucket_model_probability(bucket: BucketSpec, model: ProbabilityModel, rounding_rule: str) -> float:
+    return _bucket_probability(bucket, model.mean, model.standard_deviation, rounding_rule)
+
+
 def _forecast_values(rule: SettlementRule, weather: WeatherSnapshot) -> list[float]:
     values = []
     for forecast in weather.forecasts:
         value = forecast.min_temp if rule.market_type == "min_temp" else forecast.max_temp
         if value is not None:
-            values.append(float(value))
+            values.append(_convert_temperature(float(value), forecast.unit, rule.measurement_unit))
     return values
 
 
@@ -106,7 +112,10 @@ def _stddev(rule: SettlementRule, weather: WeatherSnapshot, values: list[float])
         sample = math.sqrt(sum((value - mean) ** 2 for value in values) / len(values))
     else:
         sample = 0.0
-    disagreement_component = (weather.disagreement or 0.0) / 2.0
+    disagreement = weather.disagreement or 0.0
+    if rule.measurement_unit.upper().startswith("C"):
+        disagreement /= 1.8
+    disagreement_component = disagreement / 2.0
     confidence_penalty = max(0.0, 0.80 - min(rule.confidence, weather.confidence)) * 2.0
     return max(1.0, sample, disagreement_component, confidence_penalty)
 
@@ -134,6 +143,9 @@ def _rounded_bounds(bucket: BucketSpec, rounding_rule: str) -> tuple[Optional[fl
     elif rounding_rule == "ceil":
         lower = None if bucket.lower is None else bucket.lower - 1.0
         upper = bucket.upper
+    elif rounding_rule == "nearest_tenth":
+        lower = None if bucket.lower is None else bucket.lower - 0.05
+        upper = None if bucket.upper is None else bucket.upper + 0.05
     else:
         lower = None if bucket.lower is None else bucket.lower - 0.5
         upper = None if bucket.upper is None else bucket.upper + 0.5
@@ -143,3 +155,15 @@ def _rounded_bounds(bucket: BucketSpec, rounding_rule: str) -> tuple[Optional[fl
 def _normal_cdf(value: float, mean: float, stddev: float) -> float:
     z = (value - mean) / (stddev * math.sqrt(2.0))
     return 0.5 * (1.0 + math.erf(z))
+
+
+def _convert_temperature(value: float, source_unit: str, target_unit: str) -> float:
+    source = source_unit.upper().replace("°", "")
+    target = target_unit.upper().replace("°", "")
+    if not target or source == target:
+        return value
+    if source.startswith("F") and target.startswith("C"):
+        return (value - 32.0) * 5.0 / 9.0
+    if source.startswith("C") and target.startswith("F"):
+        return value * 9.0 / 5.0 + 32.0
+    return value

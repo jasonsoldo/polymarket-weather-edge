@@ -1,6 +1,7 @@
 """Minimal weather market strategy core."""
 
 from .bucket_probability import BucketProbability, BucketProbabilityCurve, ProbabilityModel, build_bucket_probabilities
+from .event_bucket_analysis import EventTradePlan, build_event_trade_plan, group_event_markets
 from .pnl_curve import BucketInput, BucketPnL, DeathGap, PnLCurve, build_pnl_curve
 from .market_scanner import GammaTag, WeatherMarket, discover_weather_tags, fetch_weather_markets
 from .orderbook import BookSummary, fetch_book_summary
@@ -24,6 +25,7 @@ __all__ = [
     "DeathGap",
     "GammaTag",
     "ExecutionResult",
+    "EventTradePlan",
     "MarketState",
     "PnLCurve",
     "ProbabilityModel",
@@ -38,6 +40,7 @@ __all__ = [
     "WeatherSnapshot",
     "WeatherMarket",
     "build_bucket_probabilities",
+    "build_event_trade_plan",
     "build_all_cities_snapshot",
     "build_live_snapshot",
     "build_pnl_curve",
@@ -46,6 +49,7 @@ __all__ = [
     "evaluate_trade_plan",
     "fetch_book_summary",
     "fetch_weather_snapshot",
+    "group_event_markets",
     "fetch_weather_markets",
     "load_strategy_config",
     "parse_bucket",

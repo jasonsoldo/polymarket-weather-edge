@@ -1,11 +1,9 @@
-from .bucket_probability import build_bucket_probabilities
+from .event_bucket_analysis import build_event_trade_plan, group_event_markets
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
-from .position_manager import positions_for_market, total_exposure
+from .position_manager import load_positions, total_exposure
 from .risk_manager import RiskConfig, weather_data_block
-from .settlement_rules import parse_settlement_rule
 from .strategy_config import StrategyConfig
-from .strategy_planner import build_trade_plan
 from .trade_executor import execute_trade_plan
 from .weather_sources import fetch_weather_snapshot
 
@@ -57,30 +55,24 @@ def run_live_dry_run(
     )
 
     rows = []
-    for market in markets:
-        row = {"market": market.to_dict()}
+    positions = load_positions(positions_db)
+    current_exposure = total_exposure(positions_db)
+    for event_markets in group_event_markets(markets):
+        row = {
+            "event_id": event_markets[0].event_id,
+            "event_slug": event_markets[0].event_slug,
+            "markets": [market.to_dict() for market in event_markets],
+        }
         try:
-            books = _fetch_books(market)
-            rule = parse_settlement_rule(market)
-            probabilities = build_bucket_probabilities(rule, weather, market)
-            positions = positions_for_market(positions_db, market.market_id)
-            plan = build_trade_plan(
-                market,
-                rule,
-                probabilities,
-                books,
-                positions,
-                strategy,
-                risk,
-                current_total_exposure=total_exposure(positions_db),
+            books = _fetch_books(event_markets)
+            plan = build_event_trade_plan(
+                event_markets, weather, strategy, risk, books, positions, current_exposure
             )
             executions = execute_trade_plan(plan, strategy, orders_db, positions_db)
             row.update(
                 {
                     "books": {token_id: book.to_dict() for token_id, book in books.items()},
-                    "settlement_rule": rule.to_dict(),
-                    "bucket_probabilities": probabilities.to_dict(),
-                    "trade_plan": plan.to_dict(),
+                    "event_bucket_plan": plan.to_dict(),
                     "executions": [execution.to_dict() for execution in executions],
                 }
             )
@@ -104,8 +96,9 @@ def run_live_dry_run(
     }
 
 
-def _fetch_books(market) -> dict:
+def _fetch_books(markets) -> dict:
     books = {}
-    for token_id in market.token_ids:
-        books[token_id] = fetch_book_summary(token_id)
+    for market in markets:
+        for token_id in market.token_ids:
+            books[token_id] = fetch_book_summary(token_id)
     return books
