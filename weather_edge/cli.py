@@ -78,6 +78,13 @@ def main(argv=None) -> int:
     wu_collect.add_argument("--interval", type=float, default=15.0)
     wu_collect.add_argument("--timeout-ms", type=int, default=30000)
 
+    wu_discovered = sub.add_parser("wunderground-collect-discovered")
+    wu_discovered.add_argument("--markets-file", required=True)
+    wu_discovered.add_argument("--unit", choices=("C", "F"), default="C")
+    wu_discovered.add_argument("--output", default="data/wunderground_discovered.jsonl")
+    wu_discovered.add_argument("--artifact-dir", default="data/wunderground_artifacts")
+    wu_discovered.add_argument("--interval", type=float, default=15.0)
+
     monitor_parser = sub.add_parser("live-monitor")
     monitor_parser.add_argument("--city", required=True)
     monitor_parser.add_argument("--lat", type=float, required=True)
@@ -214,6 +221,12 @@ def main(argv=None) -> int:
                     time.sleep(max(0.0, args.interval))
         print(json.dumps({"output": str(output), "collected": collected, "failed": failed}, indent=2))
         return 0 if failed == 0 else 2
+
+    if args.command == "wunderground-collect-discovered":
+        from .wunderground_collector import collect_discovered_markets
+        rows = collect_discovered_markets(args.markets_file, args.output, args.artifact_dir, args.unit, args.interval)
+        print(json.dumps({"markets_collected": len(rows), "output": args.output, "statuses": {status: sum(row["status"] == status for row in rows) for status in sorted({row["status"] for row in rows})}}, indent=2))
+        return 0
 
     if args.command == "init-db":
         init_db(args.db)

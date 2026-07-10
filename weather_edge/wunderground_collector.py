@@ -1,0 +1,45 @@
+"""Batch collection for Wunderground markets discovered from Polymarket."""
+import json
+import re
+import time
+from pathlib import Path
+
+from .settlement_sources.wunderground_browser import fetch_wunderground_browser
+
+
+def discovered_wu_targets(payload):
+    targets = {}
+    for market in payload.get("markets", []):
+        source = str(market.get("resolution_source", "") or market.get("description", ""))
+        if "wunderground.com" not in source.lower() and "weather underground" not in source.lower():
+            continue
+        station = str(market.get("station_code", "") or market.get("target_station_or_data_source", "")).upper()
+        target_date = str(market.get("target_date", "") or market.get("date", ""))[:10]
+        url = market.get("resolution_source", "")
+        if "http" not in url:
+            match = re.search(r"https?://[^\s)]+wunderground\.com[^\s)]*", source, re.I)
+            url = match.group(0) if match else ""
+        if not station or not target_date or "http" not in url:
+            continue
+        targets[(station, target_date, url)] = {"station": station, "date": target_date, "url": url, "city": market.get("city_guess", "")}
+    return list(targets.values())
+
+
+def collect_discovered_markets(markets_file, output, artifact_dir, unit="C", interval=15.0):
+    payload = json.loads(Path(markets_file).read_text(encoding="utf-8"))
+    targets = discovered_wu_targets(payload)
+    target_path = Path(output)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    with target_path.open("a", encoding="utf-8") as handle:
+        for index, target in enumerate(targets):
+            result = fetch_wunderground_browser(target["url"], target["station"], target["date"], unit, artifact_dir)
+            row = {**target, **result.to_dict()}
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+            handle.flush()
+            rows.append(row)
+            if result.status in {"wu_unavailable", "wu_source_mismatch"} and any(code in result.reason for code in ("403", "429", "CAPTCHA")):
+                break
+            if index + 1 < len(targets):
+                time.sleep(max(0.0, interval))
+    return rows
