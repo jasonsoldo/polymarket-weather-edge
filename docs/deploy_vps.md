@@ -33,7 +33,7 @@ python -m weather_edge.cli live-monitor-loop \
   --city "New York" \
   --lat 40.7128 \
   --lon -74.0060 \
-  --date 2026-07-10 \
+  --date today \
   --output logs/live_monitor.jsonl \
   --interval 300 \
   --limit 20 \
@@ -51,7 +51,7 @@ python -m weather_edge.cli live-dry-run \
   --city "New York" \
   --lat 40.7128 \
   --lon -74.0060 \
-  --date 2026-07-10 \
+  --date today \
   --strategy-config config/strategy.example.json \
   --risk-config config/risk.example.json \
   --orders-db data/orders.sqlite \
@@ -160,7 +160,7 @@ After=network-online.target weather-edge-monitor.service
 [Service]
 Type=simple
 WorkingDirectory=/opt/polymarket-weather-edge
-ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli web-monitor --host 0.0.0.0 --port 8080 --city "New York" --lat 40.7128 --lon -74.0060 --date 2026-07-10 --log logs/live_monitor.jsonl --limit 100 --pages 5
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli web-monitor --host 0.0.0.0 --port 8080 --city "New York" --lat 40.7128 --lon -74.0060 --date today --log logs/live_monitor.jsonl --limit 100 --pages 5
 Restart=on-failure
 RestartSec=30
 
@@ -189,7 +189,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/polymarket-weather-edge
-ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli live-monitor-all --date 2026-07-10 --output logs/live_monitor_all.jsonl --interval 300 --limit 100 --pages 5
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli live-monitor-all --date today --output logs/live_monitor_all.jsonl --interval 300 --limit 100 --pages 5
 Restart=on-failure
 RestartSec=30
 
@@ -201,7 +201,7 @@ For the all-cities web service, use this `ExecStart` instead of the single-city
 example above:
 
 ```ini
-ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli web-monitor-all --host 0.0.0.0 --port 8080 --date 2026-07-10 --log logs/live_monitor_all.jsonl --limit 100 --pages 5
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli web-monitor-all --host 0.0.0.0 --port 8080 --date today --log logs/live_monitor_all.jsonl --limit 100 --pages 5
 ```
 
 ## Required Before Live Trading

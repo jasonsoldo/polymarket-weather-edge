@@ -1,6 +1,6 @@
 import json
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -34,6 +34,7 @@ def build_live_snapshot(
     pages: int = 3,
     include_broad_weather: bool = False,
 ) -> dict:
+    target_date = _resolve_target_date(target_date)
     markets = fetch_weather_markets(
         market_limit,
         city=city,
@@ -109,6 +110,7 @@ def build_all_cities_snapshot(
     pages: int = 3,
     include_broad_weather: bool = False,
 ) -> dict:
+    target_date = _resolve_target_date(target_date)
     city_coords = cities or DEFAULT_CITY_COORDS
     city_snapshots = []
     for city, coords in city_coords.items():
@@ -236,3 +238,7 @@ def run_all_cities_monitor_loop(
             break
         time.sleep(interval_seconds)
     return runs
+
+
+def _resolve_target_date(target_date: str) -> str:
+    return date.today().isoformat() if target_date.strip().lower() == "today" else target_date

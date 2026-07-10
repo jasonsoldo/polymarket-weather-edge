@@ -55,6 +55,15 @@ class MonitorLoopTests(unittest.TestCase):
         self.assertIn("confidence below min_confidence", snapshot["risk_reasons"])
         self.assertEqual(snapshot["threshold"]["max_allowed_weather_disagreement"], 2.0)
 
+    def test_monitor_today_uses_current_calendar_date(self):
+        weather = WeatherSnapshot("New York", 40.7, -74.0, "", (), None, 0.9)
+        with patch("weather_edge.monitor.fetch_weather_markets", return_value=[]), patch(
+            "weather_edge.monitor.fetch_weather_snapshot", return_value=weather
+        ) as fetch_weather:
+            build_live_snapshot("New York", 40.7, -74.0, "today")
+
+        self.assertNotEqual(fetch_weather.call_args.args[3], "today")
+
     def test_monitor_loop_writes_jsonl_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "live_monitor.jsonl"
