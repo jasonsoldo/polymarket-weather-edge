@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from weather_edge.market_scanner import WeatherMarket
 from weather_edge.monitor import build_all_cities_snapshot, build_live_snapshot, run_live_monitor_loop
 from weather_edge.weather_sources import WeatherSnapshot
 
@@ -64,6 +65,18 @@ class MonitorLoopTests(unittest.TestCase):
 
         self.assertNotEqual(fetch_weather.call_args.args[3], "today")
 
+    def test_all_cities_derives_target_date_cities_from_markets(self):
+        weather = WeatherSnapshot("", 0.0, 0.0, "2026-07-10", (), None, 0.9)
+        markets = [_market("London", "July 10", "2026-07-10T12:00:00Z"), _market("Denver", "July 9", "2026-07-09T12:00:00Z")]
+        with patch("weather_edge.monitor.fetch_weather_markets", return_value=markets), patch(
+            "weather_edge.monitor.fetch_weather_snapshot", return_value=weather
+        ), patch("weather_edge.monitor.get_json", return_value={"results": [{"latitude": 51.5, "longitude": -0.1}]}):
+            snapshot = build_all_cities_snapshot("2026-07-10")
+
+        self.assertEqual(snapshot["strict_markets_found"], 1)
+        self.assertEqual(snapshot["cities_monitored"], 1)
+        self.assertEqual(snapshot["cities"][0]["city"], "London")
+
     def test_monitor_loop_writes_jsonl_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "live_monitor.jsonl"
@@ -96,3 +109,14 @@ class MonitorLoopTests(unittest.TestCase):
     def test_monitor_loop_rejects_zero_interval(self):
         with self.assertRaisesRegex(ValueError, "interval_seconds"):
             run_live_monitor_loop("New York", 40.7, -74.0, "2026-07-10", "unused.jsonl", interval_seconds=0, max_runs=1)
+
+
+def _market(city, question_date, end_date):
+    return WeatherMarket(
+        event_id=f"event-{city}", event_slug=f"event-{city}", event_title=f"Highest temperature in {city}",
+        market_id=f"market-{city}", condition_id="", market_slug=f"market-{city}",
+        question=f"Will the highest temperature in {city} be 27C on {question_date}?", description="", end_date=end_date,
+        active=True, closed=False, outcomes=("Yes", "No"), outcome_prices=(0.2, 0.8), token_ids=(), resolution_source="",
+        tags=("Weather",), city_guess=city, discovery_source="test", is_temperature_market=True, excluded_reason="",
+        matched_keywords=("highest temperature",), city_match_score=1, market_type_guess="high_temp",
+    )

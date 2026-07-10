@@ -1,10 +1,12 @@
 import json
+import re
 import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from .event_bucket_analysis import build_event_trade_plan, group_event_markets
+from .http_client import get_json
 from .market_scanner import fetch_weather_markets
 from .orderbook import fetch_book_summary
 from .risk_manager import RiskConfig, weather_data_block
@@ -18,6 +20,11 @@ DEFAULT_CITY_COORDS = {
     "Miami": (25.7617, -80.1918),
     "Los Angeles": (34.0522, -118.2437),
     "Hong Kong": (22.3193, 114.1694),
+}
+OPEN_METEO_GEOCODING_API = "https://geocoding-api.open-meteo.com/v1/search"
+MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
 }
 
 
@@ -33,17 +40,14 @@ def build_live_snapshot(
     query: str = "",
     pages: int = 3,
     include_broad_weather: bool = False,
+    discovered_markets=None,
 ) -> dict:
     target_date = _resolve_target_date(target_date)
-    markets = fetch_weather_markets(
-        market_limit,
-        city=city,
-        tag_id=tag_id,
-        slug=slug,
-        query=query,
-        pages=pages,
+    markets = discovered_markets if discovered_markets is not None else fetch_weather_markets(
+        market_limit, city=city, tag_id=tag_id, slug=slug, query=query, pages=pages,
         include_broad_weather=include_broad_weather,
     )
+    markets = _markets_for_target_date(markets, target_date)
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
     risk_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, RiskConfig())
     books = {}
@@ -111,10 +115,15 @@ def build_all_cities_snapshot(
     include_broad_weather: bool = False,
 ) -> dict:
     target_date = _resolve_target_date(target_date)
-    city_coords = cities or DEFAULT_CITY_COORDS
+    strict_markets = _markets_for_target_date(
+        fetch_weather_markets(market_limit, city="", pages=pages, include_broad_weather=include_broad_weather),
+        target_date,
+    )
+    city_coords, unresolved_cities = _city_coords_for_markets(strict_markets, cities)
     city_snapshots = []
     for city, coords in city_coords.items():
         latitude, longitude = coords
+        city_markets = [market for market in strict_markets if market.city_guess.lower() == city.lower()]
         city_snapshots.append(
             build_live_snapshot(
                 city,
@@ -125,15 +134,9 @@ def build_all_cities_snapshot(
                 include_books=include_books,
                 pages=pages,
                 include_broad_weather=include_broad_weather,
+                discovered_markets=city_markets,
             )
         )
-
-    strict_markets = fetch_weather_markets(
-        market_limit,
-        city="",
-        pages=pages,
-        include_broad_weather=include_broad_weather,
-    )
     actions = [item.get("recommended_action", "") for item in city_snapshots]
     if any(action == "NO_TRADE" for action in actions):
         recommended_action = "NO_TRADE"
@@ -151,11 +154,12 @@ def build_all_cities_snapshot(
         "markets_found": sum(item.get("markets_found", 0) for item in city_snapshots),
         "strict_markets_found": len(strict_markets),
         "strict_markets": [market.to_dict() for market in strict_markets],
+        "unresolved_cities": unresolved_cities,
         "cities": city_snapshots,
         "notes": [
             "read_only_snapshot",
             "no_orders_are_created",
-            "default cities can be expanded when Polymarket lists additional city temperature markets",
+            "cities are derived from strict temperature markets for the target date",
         ],
     }
 
@@ -242,3 +246,40 @@ def run_all_cities_monitor_loop(
 
 def _resolve_target_date(target_date: str) -> str:
     return date.today().isoformat() if target_date.strip().lower() == "today" else target_date
+
+
+def _markets_for_target_date(markets, target_date: str):
+    return [market for market in markets if _market_matches_target_date(market, target_date)]
+
+
+def _market_matches_target_date(market, target_date: str) -> bool:
+    match = re.search(r"\b(" + "|".join(MONTHS) + r")\s+(\d{1,2})\b", market.question.lower())
+    if match:
+        market_date = f"{target_date[:4]}-{MONTHS[match.group(1)]:02d}-{int(match.group(2)):02d}"
+        return market_date == target_date
+    return market.end_date.startswith(target_date)
+
+
+def _city_coords_for_markets(markets, configured_cities):
+    if configured_cities is not None:
+        return configured_cities, []
+    coords = {}
+    unresolved = []
+    for city in sorted({market.city_guess.strip() for market in markets if market.city_guess.strip()}):
+        if city in DEFAULT_CITY_COORDS:
+            coords[city] = DEFAULT_CITY_COORDS[city]
+            continue
+        try:
+            coords[city] = _geocode_city(city)
+        except RuntimeError:
+            unresolved.append(city)
+    return coords, unresolved
+
+
+def _geocode_city(city: str) -> tuple[float, float]:
+    payload = get_json(OPEN_METEO_GEOCODING_API, {"name": city, "count": 1, "language": "en", "format": "json"})
+    results = payload.get("results") or []
+    if not results:
+        raise RuntimeError(f"city geocoding returned no result: {city}")
+    result = results[0]
+    return float(result["latitude"]), float(result["longitude"])
