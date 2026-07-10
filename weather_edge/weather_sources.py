@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, asdict
 from typing import Optional
 
@@ -58,6 +59,12 @@ def fetch_weather_snapshot(
     nws = fetch_nws(latitude, longitude, target_date)
     if nws:
         forecasts.append(nws)
+    weatherapi = fetch_weatherapi(latitude, longitude, target_date, unit)
+    if weatherapi:
+        forecasts.append(weatherapi)
+    accuweather = fetch_accuweather(latitude, longitude, target_date, unit)
+    if accuweather:
+        forecasts.append(accuweather)
 
     max_values = [forecast.max_temp for forecast in forecasts if forecast.max_temp is not None]
     min_values = [forecast.min_temp for forecast in forecasts if forecast.min_temp is not None]
@@ -77,6 +84,43 @@ def fetch_weather_snapshot(
         disagreement=disagreement,
         confidence=confidence,
     )
+
+
+def fetch_weatherapi(latitude: float, longitude: float, target_date: str, unit: str = "fahrenheit") -> Optional[DailyForecast]:
+    key = os.getenv("WEATHERAPI_KEY", "").strip()
+    if not key:
+        return None
+    try:
+        data = get_json("https://api.weatherapi.com/v1/forecast.json", {
+            "key": key, "q": f"{latitude},{longitude}", "days": 14,
+            "dt": target_date, "aqi": "no", "alerts": "no",
+        })
+        day = ((data.get("forecast") or {}).get("forecastday") or [])[0].get("day") or {}
+        current = ((data.get("current") or {}).get("last_updated") or "")
+        use_f = unit.lower().startswith("f")
+        return DailyForecast("weatherapi", target_date, float(day["maxtemp_f" if use_f else "maxtemp_c"]), float(day["mintemp_f" if use_f else "mintemp_c"]), "F" if use_f else "C", current, f"{latitude},{longitude}", str((data.get("location") or {}).get("tz_id") or ""), "weatherapi", "weatherapi_grid")
+    except (KeyError, IndexError, TypeError, ValueError, RuntimeError):
+        return None
+
+
+def fetch_accuweather(latitude: float, longitude: float, target_date: str, unit: str = "fahrenheit") -> Optional[DailyForecast]:
+    key = os.getenv("ACCUWEATHER_API_KEY", "").strip()
+    if not key:
+        return None
+    try:
+        location = get_json("https://dataservice.accuweather.com/locations/v1/cities/geoposition/search", {"apikey": key, "q": f"{latitude},{longitude}"})
+        location_key = str(location.get("Key") or "")
+        if not location_key:
+            return None
+        daily = get_json(f"https://dataservice.accuweather.com/forecasts/v1/daily/15day/{location_key}", {"apikey": key, "metric": "false" if unit.lower().startswith("f") else "true"})
+        target = next((item for item in daily.get("DailyForecasts") or [] if str(item.get("Date", "")).startswith(target_date)), None)
+        if not target:
+            return None
+        minimum = target.get("Temperature", {}).get("Minimum", {}).get("Value")
+        maximum = target.get("Temperature", {}).get("Maximum", {}).get("Value")
+        return DailyForecast("accuweather", target_date, float(maximum), float(minimum), "F" if unit.lower().startswith("f") else "C", str(target.get("Date") or ""), str(location.get("LocalizedName") or f"{latitude},{longitude}"), "", "accuweather_15day", location_key)
+    except (KeyError, IndexError, TypeError, ValueError, RuntimeError):
+        return None
 
 
 def fetch_open_meteo(

@@ -34,6 +34,12 @@ def settlement_source_capability(rule: SettlementRule) -> str:
         return "supported_official"
     if "wunderground" in source or "weather underground" in source:
         return "unsupported_no_official_api"
+    if "weatherapi" in source or "weather api" in source:
+        return "supported_official" if __import__("os").getenv("WEATHERAPI_KEY") else "pending"
+    if "accuweather" in source:
+        return "supported_official" if __import__("os").getenv("ACCUWEATHER_API_KEY") else "pending"
+    if any(name in source for name in ("meteostat", "met office", "jma", "kma", "cwa")):
+        return "pending"
     return "unsupported_settlement_source"
 
 

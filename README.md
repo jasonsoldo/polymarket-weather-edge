@@ -19,6 +19,7 @@ simulation/backtest runner.
 - C++ PnL curve engine source for performance-sensitive calculation
 - Read-only live Polymarket market discovery
 - Read-only Open-Meteo and NWS forecast snapshots
+- Optional WeatherAPI and AccuWeather forecast snapshots via `WEATHERAPI_KEY` and `ACCUWEATHER_API_KEY`
 - Settlement rule parsing for source, unit, station/grid, timezone, and bucket bounds
 - Bucket probability curve from live forecasts
 - Dry-run trade planning against real market/weather/orderbook data
