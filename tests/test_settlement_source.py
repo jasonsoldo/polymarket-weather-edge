@@ -1,4 +1,5 @@
 import unittest
+import os
 from unittest.mock import patch
 
 from weather_edge.settlement_rules import SettlementRule
@@ -6,6 +7,23 @@ from weather_edge.settlement_source import fetch_settlement_observation, settlem
 
 
 class SettlementSourceTests(unittest.TestCase):
+    def test_configured_cwa_official_adapter_reads_extremes(self):
+        rule = _rule("CWA", "RCSS", "2020-07-10")
+        old = {name: os.environ.get(name) for name in ("CWA_API_KEY", "CWA_SETTLEMENT_URL")}
+        os.environ["CWA_API_KEY"] = "test-key"
+        os.environ["CWA_SETTLEMENT_URL"] = "https://cwa.test/settlement"
+        try:
+            with patch("weather_edge.settlement_source.get_json", return_value={"data": [{"max_temp": 34.2, "min_temp": 26.1, "date": "2020-07-10"}]}):
+                result = fetch_settlement_observation(rule)
+            self.assertEqual(result.status, "available")
+            self.assertEqual(result.max_temp, 34.2)
+            self.assertEqual(settlement_source_capability(rule), "supported_official")
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
     def test_wunderground_is_explicitly_unsupported(self):
         rule = _rule("Wunderground", "EGLC", "2020-07-10")
 

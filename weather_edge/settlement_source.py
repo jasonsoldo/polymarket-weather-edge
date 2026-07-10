@@ -1,3 +1,4 @@
+import os
 from dataclasses import asdict, dataclass
 from datetime import date
 from typing import Optional
@@ -39,7 +40,8 @@ def settlement_source_capability(rule: SettlementRule) -> str:
     if "accuweather" in source:
         return "supported_official" if __import__("os").getenv("ACCUWEATHER_API_KEY") else "pending"
     if any(name in source for name in ("meteostat", "met office", "jma", "kma", "cwa")):
-        return "pending"
+        prefix = _provider_prefix(source)
+        return "supported_official" if os.getenv(f"{prefix}_API_KEY") and os.getenv(f"{prefix}_SETTLEMENT_URL") else "pending"
     return "unsupported_settlement_source"
 
 
@@ -51,7 +53,66 @@ def fetch_settlement_observation(rule: SettlementRule) -> SettlementSourceResult
         return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "settlement day is not complete")
     if "hong kong observatory" in rule.settlement_source.lower():
         return _fetch_hko(rule)
+    if any(name in rule.settlement_source.lower() for name in ("met office", "jma", "kma", "cwa", "meteostat")):
+        return _fetch_configured_official(rule)
     return _fetch_nws(rule)
+
+
+def _provider_prefix(source: str) -> str:
+    source = source.lower()
+    if "met office" in source:
+        return "METOFFICE"
+    if "meteostat" in source:
+        return "METEOSTAT"
+    if "jma" in source:
+        return "JMA"
+    if "kma" in source:
+        return "KMA"
+    return "CWA"
+
+
+def _fetch_configured_official(rule: SettlementRule) -> SettlementSourceResult:
+    prefix = _provider_prefix(rule.settlement_source)
+    endpoint = os.getenv(f"{prefix}_SETTLEMENT_URL", "")
+    key = os.getenv(f"{prefix}_API_KEY", "")
+    if not endpoint or not key:
+        return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "official adapter requires API key and settlement URL")
+    try:
+        payload = get_json(endpoint, {"apiKey": key, "station": rule.target_station_or_data_source, "date": rule.date, "target_date": rule.date})
+        maximum, minimum, observed_at = _extract_extremes(payload)
+        if maximum is None and minimum is None:
+            return SettlementSourceResult("unavailable", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", f"{prefix} response contained no temperature extremes")
+        return SettlementSourceResult("available", rule.settlement_source, rule.target_station_or_data_source, rule.date, maximum, minimum, rule.measurement_unit, observed_at or rule.date, f"official {prefix} configured adapter")
+    except RuntimeError as exc:
+        return SettlementSourceResult("unavailable", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", str(exc))
+
+
+def _extract_extremes(payload):
+    maximum = minimum = None
+    observed_at = ""
+    def visit(value):
+        nonlocal maximum, minimum, observed_at
+        if isinstance(value, dict):
+            keys = {str(k).lower(): v for k, v in value.items()}
+            for key, item in keys.items():
+                if isinstance(item, (int, float, str)):
+                    try:
+                        number = float(item)
+                    except (TypeError, ValueError):
+                        continue
+                    if any(token in key for token in ("maxt", "max_temp", "maximum", "high")):
+                        maximum = number if maximum is None else max(maximum, number)
+                    if any(token in key for token in ("mint", "min_temp", "minimum", "low")):
+                        minimum = number if minimum is None else min(minimum, number)
+                    if "time" in key or "date" in key:
+                        observed_at = str(item)
+            for item in value.values():
+                visit(item)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+    visit(payload)
+    return maximum, minimum, observed_at
 
 
 def _fetch_hko(rule: SettlementRule) -> SettlementSourceResult:
