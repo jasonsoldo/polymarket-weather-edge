@@ -1,5 +1,7 @@
 import argparse
 import json
+import time
+from datetime import date, timedelta
 from dataclasses import asdict
 
 from .backtest import run_backtest
@@ -64,6 +66,17 @@ def main(argv=None) -> int:
     wu_parser.add_argument("--artifact-dir", default="data/wunderground_artifacts")
     wu_parser.add_argument("--timeout-ms", type=int, default=30000)
     wu_parser.add_argument("--retries", type=int, default=2)
+
+    wu_collect = sub.add_parser("wunderground-collect")
+    wu_collect.add_argument("--station", required=True)
+    wu_collect.add_argument("--start-date", required=True)
+    wu_collect.add_argument("--end-date", required=True)
+    wu_collect.add_argument("--unit", choices=("C", "F"), default="C")
+    wu_collect.add_argument("--url-template", required=True)
+    wu_collect.add_argument("--artifact-dir", default="data/wunderground_artifacts")
+    wu_collect.add_argument("--output", default="data/wunderground_samples.jsonl")
+    wu_collect.add_argument("--interval", type=float, default=15.0)
+    wu_collect.add_argument("--timeout-ms", type=int, default=30000)
 
     monitor_parser = sub.add_parser("live-monitor")
     monitor_parser.add_argument("--city", required=True)
@@ -169,6 +182,38 @@ def main(argv=None) -> int:
         result = fetch_wunderground_browser(args.url, args.station, args.date, args.unit, args.artifact_dir, args.timeout_ms, args.retries)
         print(json.dumps(result.to_dict(), indent=2))
         return 0 if result.status in {"wu_browser_supported", "wu_verified"} else 2
+
+    if args.command == "wunderground-collect":
+        from pathlib import Path
+        start = date.fromisoformat(args.start_date)
+        end = date.fromisoformat(args.end_date)
+        if end < start:
+            parser.error("--end-date must not be earlier than --start-date")
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        current = start
+        collected = failed = 0
+        with output.open("a", encoding="utf-8") as handle:
+            while current <= end:
+                target = current.isoformat()
+                url = args.url_template.replace("{station}", args.station).replace("{date}", target)
+                result = fetch_wunderground_browser(url, args.station, target, args.unit, args.artifact_dir, args.timeout_ms, 2)
+                row = result.to_dict()
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
+                handle.flush()
+                if result.status in {"wu_unavailable", "wu_source_mismatch"}:
+                    failed += 1
+                    print(json.dumps({"date": target, "status": result.status, "reason": result.reason}))
+                    if "403" in result.reason or "429" in result.reason or "CAPTCHA" in result.reason:
+                        break
+                else:
+                    collected += 1
+                    print(json.dumps({"date": target, "status": result.status, "daily_high": result.daily_high, "daily_low": result.daily_low}))
+                current += timedelta(days=1)
+                if current <= end:
+                    time.sleep(max(0.0, args.interval))
+        print(json.dumps({"output": str(output), "collected": collected, "failed": failed}, indent=2))
+        return 0 if failed == 0 else 2
 
     if args.command == "init-db":
         init_db(args.db)
