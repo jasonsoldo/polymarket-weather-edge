@@ -143,6 +143,7 @@ def main(argv=None) -> int:
 
     reconcile_parser = sub.add_parser("reconcile-orders")
     reconcile_parser.add_argument("--orders-db", default="data/orders.sqlite")
+    reconcile_parser.add_argument("--positions-db", default="data/positions.sqlite")
 
     args = parser.parse_args(argv)
 
@@ -345,7 +346,7 @@ def main(argv=None) -> int:
     if args.command == "reconcile-orders":
         from .reconciliation import reconcile_live_orders
 
-        print(json.dumps({"orders": reconcile_live_orders(args.orders_db)}, indent=2))
+        print(json.dumps({"orders": reconcile_live_orders(args.orders_db, args.positions_db)}, indent=2))
         return 0
 
     return 1
