@@ -55,7 +55,7 @@ def build_live_snapshot(
         include_broad_weather=include_broad_weather,
     )
     markets = _markets_for_target_date(markets, target_date)
-    weather = fetch_weather_snapshot(city, latitude, longitude, target_date)
+    weather = fetch_weather_snapshot(city, latitude, longitude, target_date, unit=_city_unit(city))
     risk_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, RiskConfig())
     books = {}
     for market in markets:
@@ -331,3 +331,12 @@ def _geocode_city(city: str) -> tuple[float, float]:
         raise RuntimeError(f"city geocoding returned no result: {city}")
     result = results[0]
     return float(result["latitude"]), float(result["longitude"])
+
+
+def _city_unit(city: str) -> str:
+    normalized = city.strip().lower()
+    for item in load_city_registry():
+        names = [str(item.get("name", "")), *(str(alias) for alias in item.get("aliases", []))]
+        if normalized in {name.lower() for name in names}:
+            return "fahrenheit" if str(item.get("preferred_unit", "C")).upper().startswith("F") else "celsius"
+    return "fahrenheit" if normalized in {"new york", "chicago", "austin", "miami", "los angeles"} else "celsius"

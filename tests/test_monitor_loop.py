@@ -10,6 +10,14 @@ from weather_edge.weather_sources import WeatherSnapshot
 
 
 class MonitorLoopTests(unittest.TestCase):
+    def test_city_unit_uses_celsius_for_unregistered_asian_city(self):
+        weather = WeatherSnapshot("Guangzhou", 23.1, 113.3, "2026-07-10", (), None, 0.9)
+        with patch("weather_edge.monitor.fetch_weather_markets", return_value=[]), patch(
+            "weather_edge.monitor.fetch_weather_snapshot", return_value=weather
+        ) as fetch_weather:
+            build_live_snapshot("Guangzhou", 23.1, 113.3, "2026-07-10")
+        self.assertEqual(fetch_weather.call_args.kwargs["unit"], "celsius")
+
     def test_all_cities_snapshot_groups_city_weather_and_strict_markets(self):
         weather = WeatherSnapshot(
             city="",

@@ -541,8 +541,13 @@ def _guess_city(event: dict[str, Any], market: dict[str, Any]) -> str:
         if index >= 0:
             city = text[index + len(prefix) :]
             city = re.split(r"\s+(?:on|by|be|will|before|after)\b|\?", city, maxsplit=1, flags=re.IGNORECASE)[0]
-            return city.strip()
+            return _clean_city_name(city)
     return ""
+
+
+def _clean_city_name(city: str) -> str:
+    cleaned = re.sub(r"\s+(?:China|中国|UK|United Kingdom|Japan|Korea|Taiwan|Hong Kong)$", "", city.strip(), flags=re.IGNORECASE)
+    return cleaned.strip(" ,-/")
 
 def _discover_city(parts, event, market):
     registry = load_city_registry()
