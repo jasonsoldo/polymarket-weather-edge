@@ -58,6 +58,57 @@ class LiveDataSourceParsingTests(unittest.TestCase):
         self.assertGreater(markets[0].city_match_score, 0)
         self.assertEqual(markets[0].market_type_guess, "high_temp")
 
+    def test_public_search_discovers_city_temperature_bucket_markets(self):
+        def fake_get_json(url, params=None, timeout=20):
+            if url.endswith("/public-search"):
+                self.assertIn("q", params)
+                return {
+                    "events": [
+                        {
+                            "id": "event-hk",
+                            "slug": "highest-temperature-in-hong-kong-on-july-9-2026",
+                            "title": "Highest temperature in Hong Kong on July 9?",
+                            "active": True,
+                            "closed": False,
+                            "tags": [
+                                {"label": "Weather", "slug": "weather"},
+                                {"label": "temperature", "slug": "temperature"},
+                            ],
+                            "markets": [
+                                {
+                                    "id": "market-hk-26",
+                                    "conditionId": "condition-hk-26",
+                                    "slug": "highest-temperature-in-hong-kong-on-july-9-2026-26c",
+                                    "question": "Will the highest temperature in Hong Kong be 26°C on July 9?",
+                                    "description": "Resolves to the highest temperature recorded by the Hong Kong Observatory in degrees Celsius.",
+                                    "endDate": "2026-07-09T12:00:00Z",
+                                    "outcomes": '["Yes","No"]',
+                                    "outcomePrices": '["0.10","0.90"]',
+                                    "clobTokenIds": '["token-yes","token-no"]',
+                                    "active": True,
+                                    "closed": False,
+                                    "feeType": "weather_fees",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            if url.endswith("/tags"):
+                return []
+            if url.endswith("/events") or url.endswith("/events/keyset"):
+                return {"events": [], "next_cursor": ""}
+            return []
+
+        with patch("weather_edge.market_scanner.get_json", side_effect=fake_get_json):
+            markets = fetch_weather_markets(limit=10, pages=1)
+
+        self.assertEqual(len(markets), 1)
+        self.assertEqual(markets[0].market_id, "market-hk-26")
+        self.assertEqual(markets[0].city_guess, "Hong Kong")
+        self.assertTrue(markets[0].is_temperature_market)
+        self.assertEqual(markets[0].market_type_guess, "high_temp")
+        self.assertIn("temperature", markets[0].matched_keywords)
+
     def test_strict_filter_excludes_broad_weather_and_non_weather_markets(self):
         def fake_get_json(url, params=None, timeout=20):
             if url.endswith("/tags"):
@@ -107,6 +158,44 @@ class LiveDataSourceParsingTests(unittest.TestCase):
         self.assertEqual(strict, [])
         self.assertEqual(len(broad), 1)
         self.assertEqual(broad[0].excluded_reason, "arctic sea ice")
+
+    def test_strict_filter_excludes_heat_wave_threshold_markets(self):
+        def fake_get_json(url, params=None, timeout=20):
+            if url.endswith("/public-search"):
+                return {
+                    "events": [
+                        {
+                            "id": "event-paris",
+                            "slug": "paris-heat-wave-by-july-31",
+                            "title": "Paris heat wave by July 31?",
+                            "active": True,
+                            "closed": False,
+                            "tags": [{"label": "Weather", "slug": "weather"}, {"label": "temperature", "slug": "temperature"}],
+                            "markets": [
+                                {
+                                    "id": "market-paris",
+                                    "conditionId": "condition-paris",
+                                    "slug": "paris-heat-wave-by-july-31",
+                                    "question": "Paris heat wave by July 31?",
+                                    "description": "Resolves Yes if the highest temperature is at least 35 degrees Celsius for 3 consecutive days.",
+                                    "outcomes": '["Yes","No"]',
+                                    "outcomePrices": '["0.50","0.50"]',
+                                    "clobTokenIds": '["yes","no"]',
+                                    "active": True,
+                                    "closed": False,
+                                }
+                            ],
+                        }
+                    ]
+                }
+            if url.endswith("/tags"):
+                return []
+            return {"events": [], "next_cursor": ""}
+
+        with patch("weather_edge.market_scanner.get_json", side_effect=fake_get_json):
+            markets = fetch_weather_markets(limit=10, pages=1)
+
+        self.assertEqual(markets, [])
 
     def test_discover_weather_tags_finds_weather_label(self):
         with patch(

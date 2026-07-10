@@ -115,7 +115,7 @@ tail -f /opt/polymarket-weather-edge/logs/live_monitor.jsonl
 
 The web monitor is read-only. The all-cities mode monitors the default city
 set used by the strict temperature-market scanner: New York, Chicago, Austin,
-Miami, and Los Angeles.
+Miami, Los Angeles, and Hong Kong.
 
 First run the all-cities JSONL monitor:
 

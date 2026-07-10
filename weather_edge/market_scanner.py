@@ -10,6 +10,7 @@ GAMMA_API = "https://gamma-api.polymarket.com"
 MAX_KEYSET_LIMIT = 100
 WEATHER_TAG_SLUGS = ("weather",)
 WEATHER_TAG_NAMES = ("weather",)
+TEMPERATURE_SEARCH_QUERIES = ("temperature",)
 WEATHER_PATTERNS = (
     r"\bweather\b",
     r"\btemperature\b",
@@ -25,6 +26,8 @@ STRICT_TEMPERATURE_KEYWORDS = (
     "temperature",
     "high temperature",
     "low temperature",
+    "highest temperature",
+    "lowest temperature",
     "hottest",
     "coldest",
     "degrees",
@@ -44,6 +47,7 @@ EXCLUDED_BROAD_MARKET_KEYWORDS = (
     "earthquake",
     "government shutdown",
     "climate change",
+    "heat wave",
     "politics",
     "election",
     "pandemic",
@@ -71,6 +75,7 @@ CITY_ALIASES = {
     "austin": ("austin", "kaus"),
     "miami": ("miami", "kmia"),
     "los angeles": ("los angeles", "la ", "lax", "klax", "downtown los angeles"),
+    "hong kong": ("hong kong", "hko", "hong kong observatory"),
 }
 
 
@@ -149,8 +154,11 @@ def fetch_weather_markets(
             if _include_market(market, city, query, include_broad_weather)
         ][:limit]
 
-    discovered_tag_id = tag_id or _first_weather_tag_id()
     markets = []
+    for search_query in _search_queries(city, query):
+        markets.extend(_iter_public_search_markets(search_query, pages=pages, limit=min(limit, MAX_KEYSET_LIMIT)))
+
+    discovered_tag_id = tag_id or _first_weather_tag_id()
     if discovered_tag_id:
         markets.extend(
             _iter_event_markets(
@@ -170,6 +178,8 @@ def fetch_weather_markets(
                 discovery_source="events_keyset_text_filter",
             )
         )
+    if len(markets) < limit:
+        markets.extend(_iter_offset_event_markets(pages=pages, limit=min(limit, MAX_KEYSET_LIMIT)))
 
     filtered = []
     seen = set()
@@ -246,6 +256,58 @@ def _iter_event_markets(
                     markets.append(parsed)
         if not cursor:
             break
+    return markets
+
+
+def _iter_offset_event_markets(pages: int, limit: int) -> list[WeatherMarket]:
+    markets = []
+    for page in range(max(1, pages)):
+        try:
+            response = get_json(
+                f"{GAMMA_API}/events",
+                {
+                    "active": "true",
+                    "closed": "false",
+                    "limit": max(1, min(limit, MAX_KEYSET_LIMIT)),
+                    "offset": page * max(1, min(limit, MAX_KEYSET_LIMIT)),
+                },
+            )
+        except RuntimeError:
+            break
+        events = response if isinstance(response, list) else []
+        for event in events:
+            for market in event.get("markets") or []:
+                parsed = _parse_market(event, market, "events_offset")
+                if parsed:
+                    markets.append(parsed)
+        if len(events) < limit:
+            break
+    return markets
+
+
+def _iter_public_search_markets(query: str, pages: int, limit: int) -> list[WeatherMarket]:
+    markets = []
+    for page in range(1, max(1, pages) + 1):
+        try:
+            response = get_json(
+                f"{GAMMA_API}/public-search",
+                {
+                    "q": query,
+                    "events_status": "active",
+                    "limit_per_type": max(1, min(limit, MAX_KEYSET_LIMIT)),
+                    "page": page,
+                },
+            )
+        except RuntimeError:
+            break
+        events = response.get("events") if isinstance(response, dict) else []
+        if not events:
+            break
+        for event in events:
+            for market in event.get("markets") or []:
+                parsed = _parse_market(event, market, f"public_search:{query}")
+                if parsed:
+                    markets.append(parsed)
     return markets
 
 
@@ -418,9 +480,21 @@ def _city_match_score(haystack: str, city: str) -> int:
 def _market_type_guess(haystack: str, tags: tuple[str, ...]) -> str:
     if any(keyword in haystack for keyword in EXCLUDED_BROAD_MARKET_KEYWORDS):
         return "non_temperature"
-    if "low temperature" in haystack or "daily low" in haystack or "what will the low be" in haystack or "coldest" in haystack:
+    if (
+        "low temperature" in haystack
+        or "lowest temperature" in haystack
+        or "daily low" in haystack
+        or "what will the low be" in haystack
+        or "coldest" in haystack
+    ):
         return "low_temp"
-    if "high temperature" in haystack or "daily high" in haystack or "what will the high be" in haystack or "hottest" in haystack:
+    if (
+        "high temperature" in haystack
+        or "highest temperature" in haystack
+        or "daily high" in haystack
+        or "what will the high be" in haystack
+        or "hottest" in haystack
+    ):
         return "high_temp"
     if "temperature" in haystack or "degrees" in haystack or "°f" in haystack or "°c" in haystack:
         if "range" in haystack or "-" in haystack:
@@ -430,10 +504,13 @@ def _market_type_guess(haystack: str, tags: tuple[str, ...]) -> str:
 
 
 def _guess_city(event: dict[str, Any], market: dict[str, Any]) -> str:
-    text = str(market.get("question") or event.get("title") or "")
+    text = str(event.get("title") or market.get("question") or "")
     for prefix in (" in ", " for "):
-        if prefix in text:
-            return text.split(prefix, 1)[1].split("?")[0].split(" on ")[0].strip()
+        index = text.lower().find(prefix)
+        if index >= 0:
+            city = text[index + len(prefix) :]
+            city = re.split(r"\s+(?:on|by|be|will|before|after)\b|\?", city, maxsplit=1, flags=re.IGNORECASE)[0]
+            return city.strip()
     return ""
 
 
@@ -469,3 +546,15 @@ def _to_float(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _search_queries(city: str, query: str) -> tuple[str, ...]:
+    if query:
+        return (query,)
+    if city:
+        aliases = CITY_ALIASES.get(city.lower(), (city.lower(),))
+        queries = [f"{city} temperature"]
+        queries.extend(f"{alias} temperature" for alias in aliases[:3] if alias.strip())
+        return tuple(dict.fromkeys(queries))
+    queries = list(TEMPERATURE_SEARCH_QUERIES)
+    return tuple(dict.fromkeys(queries))
