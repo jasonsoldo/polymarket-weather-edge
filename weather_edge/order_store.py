@@ -87,6 +87,18 @@ def save_order(path: str, order: StoredOrder) -> None:
         )
 
 
+def load_orders(path: str, statuses: tuple[str, ...] = ()) -> list[StoredOrder]:
+    init_orders_db(path)
+    query = "SELECT client_order_id, market_id, token_id, bucket, side, price, size, status, payload_json FROM orders"
+    params = []
+    if statuses:
+        query += " WHERE status IN (" + ",".join("?" for _ in statuses) + ")"
+        params = list(statuses)
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [StoredOrder(*row[:8], json.loads(row[8])) for row in rows]
+
+
 def _parse_sqlite_time(value: str) -> datetime:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=timezone.utc)

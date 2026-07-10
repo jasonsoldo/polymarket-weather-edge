@@ -112,17 +112,8 @@ def _record_rejected(order: PlannedOrder, orders_db: str, client_order_id: str, 
 
 
 def _post_live_order(order: PlannedOrder, strategy: StrategyConfig) -> dict:
-    try:
-        from py_clob_client.client import ClobClient
-        from py_clob_client.clob_types import OrderArgs
-        from py_clob_client.constants import POLYGON
-    except ImportError as exc:
-        raise RuntimeError("py-clob-client is not installed") from exc
+    from .clob_v2 import submit_limit_order
 
-    private_key = os.environ[strategy.private_key_env]
-    client = ClobClient("https://clob.polymarket.com", key=private_key, chain_id=POLYGON)
-    client.set_api_creds(client.create_or_derive_api_creds())
-    order_args = OrderArgs(price=order.price, size=order.size, side=order.side, token_id=order.token_id)
-    signed_order = client.create_order(order_args)
-    response = client.post_order(signed_order)
-    return response if isinstance(response, dict) else {"response": str(response)}
+    if strategy.private_key_env != "POLYMARKET_PRIVATE_KEY":
+        os.environ["POLYMARKET_PRIVATE_KEY"] = os.environ[strategy.private_key_env]
+    return submit_limit_order(order.token_id, order.price, order.size, order.side)

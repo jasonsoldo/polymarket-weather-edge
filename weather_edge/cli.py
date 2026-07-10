@@ -141,6 +141,9 @@ def main(argv=None) -> int:
     exit_parser.add_argument("--orders-db", default="data/orders.sqlite")
     exit_parser.add_argument("--reason", default="manual_protective_exit")
 
+    reconcile_parser = sub.add_parser("reconcile-orders")
+    reconcile_parser.add_argument("--orders-db", default="data/orders.sqlite")
+
     args = parser.parse_args(argv)
 
     if args.command == "init-db":
@@ -337,6 +340,12 @@ def main(argv=None) -> int:
         plan = build_protective_exit_plan(positions, books, args.reason)
         executions = execute_trade_plan(plan, StrategyConfig(), args.orders_db, args.positions_db)
         print(json.dumps({"plan": plan.to_dict(), "executions": [item.to_dict() for item in executions]}, indent=2))
+        return 0
+
+    if args.command == "reconcile-orders":
+        from .reconciliation import reconcile_live_orders
+
+        print(json.dumps({"orders": reconcile_live_orders(args.orders_db)}, indent=2))
         return 0
 
     return 1
