@@ -1,0 +1,17 @@
+[Unit]
+Description=WeatherEdge dynamic Wunderground collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=jason
+WorkingDirectory=/opt/polymarket-weather-edge
+Environment=PYTHONUNBUFFERED=1
+Environment=WU_SCAN_INTERVAL=3600
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python /opt/polymarket-weather-edge/scripts/wunderground_collector_loop.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
