@@ -91,7 +91,7 @@ class TradeExecutionTests(unittest.TestCase):
                     str(Path(tmp) / "positions.sqlite"),
                 )
 
-        fetch_markets.assert_not_called()
+        fetch_markets.assert_called_once()
         self.assertEqual(result["recommended_action"], "NO_TRADE")
         self.assertEqual(result["blocked_by"], "data_disagreement")
         self.assertIn("weather data disagreement too high", result["risk_reasons"])

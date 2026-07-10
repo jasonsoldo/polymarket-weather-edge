@@ -24,8 +24,21 @@ def run_live_dry_run(
     query: str = "",
     pages: int = 2,
     include_broad_weather: bool = False,
+    max_pages: int = 5,
+    scan_all_pages: bool = False,
 ) -> dict:
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date, unit=_city_unit(city))
+    markets = fetch_weather_markets(
+        market_limit,
+        city=city,
+        tag_id=tag_id,
+        slug=slug,
+        query=query,
+        pages=pages,
+        max_pages=max_pages,
+        scan_all_pages=scan_all_pages,
+        include_broad_weather=include_broad_weather,
+    )
     weather_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, risk)
     if weather_block:
         return {
@@ -34,7 +47,8 @@ def run_live_dry_run(
             "city": city,
             "target_date": target_date,
             "weather": weather.to_dict(),
-            "markets_found": 0,
+            "markets_found": len(markets),
+            "markets": [market.to_dict() for market in markets],
             "results": [],
             **weather_block,
             "safety": [
@@ -44,16 +58,6 @@ def run_live_dry_run(
                 "live path uses official py-clob-client only when installed and explicitly enabled",
             ],
         }
-
-    markets = fetch_weather_markets(
-        market_limit,
-        city=city,
-        tag_id=tag_id,
-        slug=slug,
-        query=query,
-        pages=pages,
-        include_broad_weather=include_broad_weather,
-    )
 
     rows = []
     positions = load_positions(positions_db)

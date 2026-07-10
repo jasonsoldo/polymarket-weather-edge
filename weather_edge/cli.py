@@ -137,6 +137,8 @@ def main(argv=None) -> int:
     dry_run_parser.add_argument("--slug", default="")
     dry_run_parser.add_argument("--query", default="")
     dry_run_parser.add_argument("--pages", type=int, default=2)
+    dry_run_parser.add_argument("--max-pages", type=int, default=20)
+    dry_run_parser.add_argument("--scan-all-pages", action="store_true")
     dry_run_parser.add_argument("--include-broad-weather", action="store_true")
 
     portfolio_parser = sub.add_parser("portfolio")
@@ -275,9 +277,9 @@ def main(argv=None) -> int:
             market_limit=args.limit,
             include_books=args.books,
             pages=args.pages,
-            include_broad_weather=args.include_broad_weather,
             max_pages=args.max_pages,
             scan_all_pages=args.scan_all_pages,
+            include_broad_weather=args.include_broad_weather,
             max_runs=args.max_runs,
             history_db=args.history_db,
             alerts_log=args.alerts_log,
