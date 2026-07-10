@@ -11,14 +11,14 @@ def parse_wunderground_html(html: str, station: str, target_date: str, unit: str
     if any(token in lower for token in ("captcha", "verify you are human", "access denied")):
         return WundergroundSnapshot("wu_unavailable", station, target_date, None, None, unit, source_url=source_url, raw_payload_hash=hashlib.sha256(html.encode()).hexdigest(), adapter_version=ADAPTER_VERSION, reason="CAPTCHA or access-control page")
     requested = unit.upper().replace("°", "")
-    if requested == "C" and "°f" in lower and "°c" not in lower:
-        return WundergroundSnapshot("wu_source_mismatch", station, target_date, None, None, unit, source_url=source_url, raw_payload_hash=hashlib.sha256(html.encode()).hexdigest(), adapter_version=ADAPTER_VERSION, reason="page is displaying Fahrenheit")
-    if requested == "F" and "°c" in lower and "°f" not in lower:
-        return WundergroundSnapshot("wu_source_mismatch", station, target_date, None, None, unit, source_url=source_url, raw_payload_hash=hashlib.sha256(html.encode()).hexdigest(), adapter_version=ADAPTER_VERSION, reason="page is displaying Celsius")
+    displayed = "F" if "°f" in lower and "°c" not in lower else "C" if "°c" in lower and "°f" not in lower else requested
     def find(label):
         match = re.search(rf"{label}\s*[:<\s][^0-9-]*(-?\d+(?:\.\d+)?)", html, re.I)
         return float(match.group(1)) if match else None
     high, low = find("high"), find("low")
+    if high is not None and displayed != requested:
+        convert = lambda value: (value - 32.0) * 5.0 / 9.0 if displayed == "F" else value * 9.0 / 5.0 + 32.0
+        high, low = convert(high), convert(low) if low is not None else None
     return WundergroundSnapshot("wu_browser_supported" if high is not None or low is not None else "wu_unavailable", station.upper(), target_date, high, low, unit.upper(), source_url=source_url, raw_payload_hash=hashlib.sha256(html.encode()).hexdigest(), adapter_version=ADAPTER_VERSION, reason="page structure changed or daily values missing" if high is None and low is None else "")
 
 

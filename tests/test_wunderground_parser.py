@@ -19,9 +19,10 @@ class WundergroundParserTests(unittest.TestCase):
         missing = parse_wunderground_html("<main>Daily Observations</main>", "ZBAA", "2026-07-10", "F")
         self.assertEqual(missing.status, "wu_unavailable")
 
-    def test_rejects_wrong_display_unit(self):
+    def test_converts_display_unit_to_requested_unit(self):
         result = parse_wunderground_html("<span>High 30 °C</span><span>Low 20 °C</span>", "ZBAA", "2026-07-10", "F")
-        self.assertEqual(result.status, "wu_source_mismatch")
+        self.assertEqual(result.status, "wu_browser_supported")
+        self.assertAlmostEqual(result.daily_high, 86.0)
 
 
 if __name__ == "__main__":
