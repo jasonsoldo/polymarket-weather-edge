@@ -15,6 +15,9 @@ def discovered_wu_targets(payload):
             continue
         station = str(market.get("station_code", "") or market.get("target_station_or_data_source", "")).upper()
         target_date = str(market.get("target_date", "") or market.get("date", ""))[:10]
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", target_date):
+            match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", " ".join(str(market.get(key, "")) for key in ("event_slug", "market_slug", "question", "description")))
+            target_date = match.group(1) if match else ""
         url = market.get("resolution_source", "")
         if "http" not in url:
             match = re.search(r"https?://[^\s)]+wunderground\.com[^\s)]*", source, re.I)
