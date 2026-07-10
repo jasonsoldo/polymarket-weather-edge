@@ -71,6 +71,7 @@ def fetch_wunderground_browser(url: str, station: str, target_date: str, unit: s
                 if response and response.status in (403, 429):
                     browser.close()
                     return WundergroundSnapshot("wu_unavailable", station, target_date, None, None, unit, source_url=url, reason=f"HTTP {response.status}")
+                _select_history_date(page, target_date)
                 html = page.content()
                 (directory / "page.html").write_text(html, encoding="utf-8")
                 page.screenshot(path=str(directory / "page.png"), full_page=True)
@@ -80,3 +81,18 @@ def fetch_wunderground_browser(url: str, station: str, target_date: str, unit: s
         except Exception as exc:
             error = str(exc)
     return WundergroundSnapshot("wu_unavailable", station, target_date, None, None, unit, source_url=url, reason=error)
+
+
+def _select_history_date(page, target_date: str) -> None:
+    """Use the site's visible date controls; URL parameters alone are unreliable."""
+    year, month, day = (int(value) for value in target_date.split("-"))
+    selects = page.locator("lib-date-selector select")
+    if selects.count() < 3:
+        return
+    selects.nth(0).select_option(label=date(year, month, day).strftime("%B"))
+    selects.nth(1).select_option(label=str(day))
+    selects.nth(2).select_option(label=str(year))
+    submit = page.locator("lib-date-selector input[type='submit'], lib-date-selector button").first
+    if submit.count():
+        submit.click()
+        page.wait_for_load_state("networkidle")
