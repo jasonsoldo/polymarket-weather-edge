@@ -18,6 +18,7 @@ class EventTradePlan:
     event_id: str
     event_slug: str
     settlement_rule: SettlementRule
+    forecast_model: object
     probability_sum: float
     bucket_set_complete: bool
     completeness_reasons: tuple[str, ...]
@@ -33,6 +34,7 @@ class EventTradePlan:
             "date": self.settlement_rule.date,
             "market_type": self.settlement_rule.market_type,
             "settlement_rule": self.settlement_rule.to_dict(),
+            "forecast_model": self.forecast_model.to_dict(),
             "probability_sum": self.probability_sum,
             "bucket_set_complete": self.bucket_set_complete,
             "completeness_reasons": list(self.completeness_reasons),
@@ -140,6 +142,7 @@ def build_event_trade_plan(
         markets[0].event_id,
         markets[0].event_slug,
         rule,
+        model,
         probability_sum,
         complete,
         tuple(dict.fromkeys(completeness_reasons)),

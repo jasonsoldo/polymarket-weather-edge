@@ -84,6 +84,7 @@ def build_live_snapshot(
         "city": city,
         "target_date": target_date,
         "weather": weather.to_dict(),
+        "risk_capital_limit": RiskConfig().max_total_exposure,
         "markets_found": len(market_rows),
         "reason": "no strict city temperature markets found" if not market_rows and city and not include_broad_weather else "",
         "markets": market_rows,
@@ -154,6 +155,7 @@ def build_all_cities_snapshot(
         "markets_found": sum(item.get("markets_found", 0) for item in city_snapshots),
         "strict_markets_found": len(strict_markets),
         "strict_markets": [market.to_dict() for market in strict_markets],
+        "risk_capital_limit": RiskConfig().max_total_exposure,
         "unresolved_cities": unresolved_cities,
         "cities": city_snapshots,
         "notes": [
