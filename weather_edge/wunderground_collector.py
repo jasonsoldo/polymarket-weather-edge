@@ -45,15 +45,26 @@ def collect_discovered_markets(markets_file, output, artifact_dir, unit="C", int
     target_path = Path(output)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
-    with target_path.open("a", encoding="utf-8") as handle:
-        for index, target in enumerate(targets):
+    existing = {}
+    if target_path.exists():
+        for line in target_path.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+                existing[_target_key(row)] = row
+            except json.JSONDecodeError:
+                continue
+    for index, target in enumerate(targets):
             result = fetch_wunderground_browser(target["url"], target["station"], target["date"], unit, artifact_dir)
             row = {**target, **result.to_dict()}
-            handle.write(json.dumps(row, sort_keys=True) + "\n")
-            handle.flush()
+            existing[_target_key(row)] = row
             rows.append(row)
             if result.status in {"wu_unavailable", "wu_source_mismatch"} and any(code in result.reason for code in ("403", "429", "CAPTCHA")):
                 break
             if index + 1 < len(targets):
                 time.sleep(max(0.0, interval))
+    target_path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in existing.values()), encoding="utf-8")
     return rows
+
+
+def _target_key(row):
+    return (row.get("station", ""), row.get("date", ""), row.get("url", "") or row.get("source_url", ""))
