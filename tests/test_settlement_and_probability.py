@@ -114,6 +114,23 @@ class SettlementAndProbabilityTests(unittest.TestCase):
         self.assertGreater(plan.curve.max_uncovered_probability, 0.08)
         self.assertTrue(plan.curve.death_gaps)
 
+    def test_blocked_event_includes_simulation_only_coverage_candidate(self):
+        markets = [_hong_kong_market("25C or below"), _hong_kong_market("26C"), _hong_kong_market("27C or higher")]
+        weather = WeatherSnapshot(
+            "Hong Kong", 22.3, 114.2, "2026-07-10",
+            (DailyForecast("open_meteo", "2026-07-10", 78.8, 73.0, "F", "1", "", "Asia/Hong_Kong", "best", "grid"),),
+            None, 0.80,
+        )
+
+        plan = build_event_trade_plan(markets, weather, StrategyConfig(max_buckets_to_buy=1), RiskConfig())
+
+        self.assertFalse(plan.decision.allowed)
+        self.assertIsNotNone(plan.simulation_candidate)
+        self.assertEqual(plan.simulation_candidate["recommended_action"], "SIMULATE_ONLY")
+        self.assertFalse(plan.simulation_candidate["executable"])
+        self.assertTrue(all(order["side"] == "SIMULATE_BUY" for order in plan.simulation_candidate["orders"]))
+        self.assertFalse(plan.simulation_candidate["curve"]["death_gaps"])
+
     def test_dry_run_filters_markets_to_target_date(self):
         today = _hong_kong_market("26掳C")
         other = replace(today, end_date="2026-07-11T23:59:00Z")

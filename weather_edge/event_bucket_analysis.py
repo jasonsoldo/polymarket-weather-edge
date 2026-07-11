@@ -27,6 +27,7 @@ class EventTradePlan:
     orders: tuple[PlannedOrder, ...]
     curve: PnLCurve
     decision: RiskDecision
+    simulation_candidate: Optional[dict]
 
     def to_dict(self) -> dict:
         return {
@@ -43,6 +44,7 @@ class EventTradePlan:
             "completeness_reasons": list(self.completeness_reasons),
             "orders": [order.to_dict() for order in self.orders],
             "curve": _curve_to_dict(self.curve),
+            "simulation_candidate": self.simulation_candidate,
             "decision": {
                 "allowed": self.decision.allowed,
                 "recommended_action": self.decision.recommended_action,
@@ -106,25 +108,9 @@ def build_event_trade_plan(
         completeness_reasons.append("bucket probabilities do not cover the full temperature distribution")
 
     selected = _select_orders(bucket_rows, strategy, books) if complete and not rule.reasons else []
-    inputs = []
-    for market, bucket, token_id, market_price, probability in bucket_rows:
-        book = books.get(token_id)
-        order = next((item for item in selected if item.token_id == token_id), None)
-        price = order.price if order else _market_price(market_price, book)
-        inputs.append(
-            BucketInput(
-                bucket=bucket.label,
-                price=price,
-                shares=order.size if order else 0.0,
-                model_probability=probability,
-                liquidity=book.ask_size if book else 0.0,
-                spread=book.spread if book and book.spread is not None else 1.0,
-                current_position=sum(item.shares for item in positions if item.token_id == token_id),
-            )
-        )
-    if not inputs:
+    if not bucket_rows:
         raise ValueError("no usable Yes bucket markets")
-    curve = build_pnl_curve(inputs, risk.max_uncovered_probability)
+    curve = _build_curve(bucket_rows, selected, books, positions, risk)
     state = MarketState(
         market_id=markets[0].event_id or markets[0].event_slug,
         city=rule.city,
@@ -147,6 +133,7 @@ def build_event_trade_plan(
         if not settlement_status_allows_scoring(source_status):
             reasons.append(source_status)
         decision = RiskDecision(False, "block_new_position", tuple(dict.fromkeys(reasons)))
+    simulation_candidate = _build_simulation_candidate(bucket_rows, selected, strategy, books, positions, risk, state)
     return EventTradePlan(
         markets[0].event_id,
         markets[0].event_slug,
@@ -159,6 +146,7 @@ def build_event_trade_plan(
         tuple(selected),
         curve,
         decision,
+        simulation_candidate,
     )
 
 
@@ -198,6 +186,47 @@ def _select_orders(rows, strategy: StrategyConfig, books: dict[str, BookSummary]
         )
         selected.append(PlannedOrder(market.market_id, token_id, bucket.label, "BUY", price, size, edge, "positive_event_bucket_edge"))
     return selected
+
+
+def _build_simulation_candidate(rows, selected, strategy, books, positions, risk, state) -> Optional[dict]:
+    selected_ids = {order.token_id for order in selected}
+    protective = [row for row in rows if row[2] not in selected_ids and row[4] > risk.max_uncovered_probability]
+    if not protective:
+        return None
+    hypothetical = list(selected)
+    for market, bucket, token_id, market_price, probability in sorted(protective, key=lambda row: row[4], reverse=True):
+        price = _market_price(market_price, books.get(token_id))
+        hypothetical.append(PlannedOrder(
+            market.market_id, token_id, bucket.label, "BUY", price,
+            strategy.neighbor_bucket_shares, probability - price, "simulation_coverage_protection",
+        ))
+    curve = _build_curve(rows, hypothetical, books, positions, risk)
+    decision = evaluate_trade_plan(curve, state, risk)
+    return {
+        "recommended_action": "SIMULATE_ONLY",
+        "executable": False,
+        "reason": "hypothetical protection for high-probability uncovered buckets",
+        "orders": [{**order.to_dict(), "side": "SIMULATE_BUY"} for order in hypothetical],
+        "curve": _curve_to_dict(curve),
+        "not_executable_reasons": list(decision.reasons),
+    }
+
+
+def _build_curve(rows, orders, books, positions, risk) -> PnLCurve:
+    inputs = []
+    for market, bucket, token_id, market_price, probability in rows:
+        book = books.get(token_id)
+        order = next((item for item in orders if item.token_id == token_id), None)
+        inputs.append(BucketInput(
+            bucket=bucket.label,
+            price=order.price if order else _market_price(market_price, book),
+            shares=order.size if order else 0.0,
+            model_probability=probability,
+            liquidity=book.ask_size if book else 0.0,
+            spread=book.spread if book and book.spread is not None else 1.0,
+            current_position=sum(item.shares for item in positions if item.token_id == token_id),
+        ))
+    return build_pnl_curve(inputs, risk.max_uncovered_probability)
 
 
 def _market_price(fallback: float, book: Optional[BookSummary]) -> float:
