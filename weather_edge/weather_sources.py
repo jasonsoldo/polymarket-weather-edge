@@ -61,7 +61,11 @@ def fetch_weather_snapshot(
 ) -> WeatherSnapshot:
     if target_date.strip().lower() == "today":
         target_date = date.today().isoformat()
-    forecasts = [fetch_open_meteo(latitude, longitude, target_date, unit)]
+    forecasts = []
+    try:
+        forecasts.append(fetch_open_meteo(latitude, longitude, target_date, unit))
+    except RuntimeError:
+        pass
     hko = fetch_hko_forecast(city, target_date)
     if hko:
         forecasts.append(hko)
@@ -367,6 +371,8 @@ def _value_at(values, index: int) -> Optional[float]:
 
 
 def _confidence(source_count: int, disagreement: Optional[float]) -> float:
+    if source_count <= 0:
+        return 0.0
     base = 0.55 if source_count == 1 else 0.85
     if disagreement is None:
         return base

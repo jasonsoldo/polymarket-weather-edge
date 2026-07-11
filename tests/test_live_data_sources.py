@@ -317,3 +317,19 @@ class LiveDataSourceParsingTests(unittest.TestCase):
         self.assertGreaterEqual(snapshot.confidence, 0.85)
         self.assertEqual(snapshot.forecasts[0].timezone, "America/New_York")
         self.assertEqual(snapshot.forecasts[1].model, "nws_grid_forecast_hourly")
+
+    def test_weather_snapshot_survives_open_meteo_failure(self):
+        with patch("weather_edge.weather_sources.fetch_open_meteo", side_effect=RuntimeError("HTTP 503")), patch(
+            "weather_edge.weather_sources.fetch_hko_forecast", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_nws", return_value=None), patch(
+            "weather_edge.weather_sources.fetch_weatherapi", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_accuweather", return_value=None), patch(
+            "weather_edge.weather_sources.fetch_metoffice", return_value=None
+        ), patch(
+            "weather_edge.weather_sources.fetch_configured_forecast", return_value=None
+        ):
+            snapshot = fetch_weather_snapshot("Seoul", 37.5665, 126.978, "2026-07-11", "celsius")
+
+        self.assertEqual(snapshot.forecasts, ())
+        self.assertIsNone(snapshot.disagreement)
+        self.assertLess(snapshot.confidence, 0.7)
