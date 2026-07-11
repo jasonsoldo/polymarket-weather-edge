@@ -136,7 +136,7 @@ class WebMonitorTests(unittest.TestCase):
             "mode": "all_cities", "target_date": "2026-07-12", "recommended_action": "NO_TRADE",
             "portfolio": {"cost_basis": 0, "unrealized_pnl": 0, "stale_positions": 0},
             "hong_kong_closure": {"settlement_verified": False, "settlement_audit_passed": True, "audit_days": 1, "last_final_date": "2026-07-10", "final_daily_max": 31.0, "markets_resolved": 2, "settlement_matches": 2, "winning_buckets": ["Will the highest temperature in Hong Kong be 31C?"], "shadow_samples": 1, "shadow_finalized": 1, "shadow_hypothetical_pnl": 0.6, "shadow_realized_pnl": 0.6},
-            "cities": [{"city": "Hong Kong", "markets_found": 2, "weather": {"confidence": 0.85, "forecasts": [{"source": "hko_forecast", "max_temp": 32.0, "unit": "C", "updated_at": "2026-07-11"}]}, "markets": []}],
+            "cities": [{"city": "Hong Kong", "markets_found": 2, "weather": {"confidence": 0.85, "hko_observation": {"current_temp": 31.4, "max_temp_since_midnight": 33.8, "min_temp_since_midnight": 27.1, "healthy": True, "observation_time": "2026-07-11T19:10:00+08:00"}, "forecasts": [{"source": "hko_forecast", "max_temp": 32.0, "unit": "C", "updated_at": "2026-07-11"}]}, "markets": []}],
         }
         overview = render_dashboard(snapshot, [])
         module = render_module_page(snapshot, "/hong-kong", [])
@@ -145,6 +145,9 @@ class WebMonitorTests(unittest.TestCase):
         self.assertIn("pending_hko_settlement_validation", module)
         self.assertIn("31.0", module)
         self.assertIn("0.60", module)
+        self.assertIn("33.8", module)
+        self.assertIn("31.4", module)
+        self.assertIn("HEALTHY", module)
 
 
 if __name__ == "__main__":

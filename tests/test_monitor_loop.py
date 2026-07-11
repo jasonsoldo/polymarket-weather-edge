@@ -64,6 +64,20 @@ class MonitorLoopTests(unittest.TestCase):
         self.assertIn("confidence below min_confidence", snapshot["risk_reasons"])
         self.assertEqual(snapshot["threshold"]["max_allowed_weather_disagreement"], 2.0)
 
+    def test_hong_kong_snapshot_blocks_when_hko_realtime_is_unhealthy(self):
+        weather = WeatherSnapshot(
+            "Hong Kong", 22.3193, 114.1694, "2026-07-11", (), 0.2, 0.9,
+            {"healthy": False, "block_reason": "hko_adapter_unhealthy", "is_final": False},
+        )
+        with patch("weather_edge.monitor.fetch_weather_markets", return_value=[]), patch(
+            "weather_edge.monitor.fetch_weather_snapshot", return_value=weather
+        ):
+            snapshot = build_live_snapshot("Hong Kong", 22.3193, 114.1694, "2026-07-11")
+
+        self.assertEqual(snapshot["recommended_action"], "NO_TRADE")
+        self.assertEqual(snapshot["blocked_by"], "hko_adapter_unhealthy")
+        self.assertIn("hko_adapter_unhealthy", snapshot["risk_reasons"])
+
     def test_monitor_today_uses_current_calendar_date(self):
         weather = WeatherSnapshot("New York", 40.7, -74.0, "", (), None, 0.9)
         with patch("weather_edge.monitor.fetch_weather_markets", return_value=[]), patch(

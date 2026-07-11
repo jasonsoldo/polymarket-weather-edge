@@ -35,3 +35,14 @@ class HistoryStoreTests(unittest.TestCase):
             })
             counts = history_summary(path)
         self.assertEqual(counts["shadow_decisions"], 1)
+
+    def test_records_hko_realtime_observation_separately(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "history.sqlite")
+            save_monitor_snapshot(path, {
+                "observed_at": "2026-07-11T11:20:00Z", "city": "Hong Kong", "target_date": "2026-07-11",
+                "weather": {"hko_observation": {"observation_time": "2026-07-11T19:10:00+08:00", "current_temp": 31.4, "max_temp_since_midnight": 33.8, "min_temp_since_midnight": 27.1, "unit": "C", "healthy": True, "is_final": False, "raw_payload_hash": "abc"}},
+                "markets": [],
+            })
+            counts = history_summary(path)
+        self.assertEqual(counts["hko_realtime_observations"], 1)

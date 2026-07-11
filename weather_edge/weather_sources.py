@@ -5,6 +5,7 @@ from typing import Optional
 
 from .http_client import get_json
 from .official_sources import extract_observation
+from .settlement_sources.hko import fetch_hko_realtime
 
 
 OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast"
@@ -39,6 +40,7 @@ class WeatherSnapshot:
     forecasts: tuple[DailyForecast, ...]
     disagreement: Optional[float]
     confidence: float
+    hko_observation: Optional[dict] = None
 
     def to_dict(self) -> dict:
         return {
@@ -49,6 +51,7 @@ class WeatherSnapshot:
             "forecasts": [forecast.to_dict() for forecast in self.forecasts],
             "disagreement": self.disagreement,
             "confidence": self.confidence,
+            "hko_observation": self.hko_observation,
         }
 
 
@@ -69,6 +72,17 @@ def fetch_weather_snapshot(
     hko = fetch_hko_forecast(city, target_date)
     if hko:
         forecasts.append(hko)
+    hko_observation = None
+    if city.strip().lower() in {"hong kong", "hko"}:
+        try:
+            hko_observation = fetch_hko_realtime(target_date).to_dict()
+        except RuntimeError:
+            hko_observation = {
+                "healthy": False,
+                "block_reason": "hko_adapter_unhealthy",
+                "data_type": "real_time_observation",
+                "is_final": False,
+            }
     nws = fetch_nws(latitude, longitude, target_date)
     if nws:
         forecasts.append(nws)
@@ -103,6 +117,7 @@ def fetch_weather_snapshot(
         forecasts=tuple(forecasts),
         disagreement=disagreement,
         confidence=confidence,
+        hko_observation=hko_observation,
     )
 
 

@@ -345,12 +345,22 @@ def _hong_kong_module(snapshot):
     weather = city.get("weather") or {}
     closure = snapshot.get("hong_kong_closure") or {}
     forecasts = weather.get("forecasts") or []
+    observation = weather.get("hko_observation") or {}
     forecast_rows = [(item.get("source", ""), item.get("max_temp", ""), item.get("unit", ""), item.get("updated_at", "")) for item in forecasts]
     verified = bool(closure.get("settlement_verified"))
     state = "official_source_verified" if verified else "pending_hko_settlement_validation"
     blocker = "" if verified else "pending_hko_settlement_validation"
     summary = _table(("Settlement status", "Audit days", "Last final date", "Final daily max", "Resolved markets", "Matches", "Shadow samples", "Finalized", "Hypothetical PnL", "Block reason"), [(state, closure.get("audit_days", 0), closure.get("last_final_date", ""), closure.get("final_daily_max", ""), closure.get("markets_resolved", 0), closure.get("settlement_matches", 0), closure.get("shadow_samples", 0), closure.get("shadow_finalized", 0), _number(closure.get("shadow_hypothetical_pnl", 0)), blocker)])
-    return "<h2>Hong Kong Overview</h2>" + summary + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Winning buckets</h2>" + "".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket"
+    realtime = _table(
+        ("Adapter", "Current", "Max since midnight", "Min since midnight", "Observed", "Final?"),
+        [(
+            "HEALTHY" if observation.get("healthy") else "UNHEALTHY",
+            observation.get("current_temp", ""), observation.get("max_temp_since_midnight", ""),
+            observation.get("min_temp_since_midnight", ""), observation.get("observation_time", ""),
+            "YES" if observation.get("is_final") else "NO (provisional)",
+        )],
+    )
+    return "<h2>Hong Kong Overview</h2>" + summary + "<h2>HKO Live Observation</h2>" + realtime + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Winning buckets</h2>" + "".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket"
 
 def _table(headers, rows):
     if not rows: return ""

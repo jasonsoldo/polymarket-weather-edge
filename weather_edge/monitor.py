@@ -58,6 +58,12 @@ def build_live_snapshot(
     markets = _markets_for_target_date(markets, target_date)
     weather = fetch_weather_snapshot(city, latitude, longitude, target_date, unit=_city_unit(city))
     risk_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, RiskConfig())
+    if city == "Hong Kong" and weather.hko_observation and not weather.hko_observation.get("healthy"):
+        risk_block = {
+            "recommended_action": "NO_TRADE",
+            "blocked_by": "hko_adapter_unhealthy",
+            "risk_reasons": ["NO_TRADE", "hko_adapter_unhealthy"],
+        }
     books = {}
     for market in markets:
         for token_id in market.token_ids:

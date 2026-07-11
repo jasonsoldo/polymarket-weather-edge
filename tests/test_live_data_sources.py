@@ -1,5 +1,6 @@
 import unittest
 import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from weather_edge.market_scanner import discover_weather_tags, fetch_weather_markets
@@ -333,3 +334,17 @@ class LiveDataSourceParsingTests(unittest.TestCase):
         self.assertEqual(snapshot.forecasts, ())
         self.assertIsNone(snapshot.disagreement)
         self.assertLess(snapshot.confidence, 0.7)
+
+    def test_hong_kong_snapshot_includes_realtime_observation(self):
+        observation = SimpleNamespace(to_dict=lambda: {"current_temp": 31.4, "max_temp_since_midnight": 33.8, "healthy": True, "is_final": False})
+        with patch("weather_edge.weather_sources.fetch_open_meteo", side_effect=RuntimeError("offline")), patch(
+            "weather_edge.weather_sources.fetch_hko_forecast", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_hko_realtime", return_value=observation), patch(
+            "weather_edge.weather_sources.fetch_nws", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_weatherapi", return_value=None), patch(
+            "weather_edge.weather_sources.fetch_accuweather", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_metoffice", return_value=None):
+            snapshot = fetch_weather_snapshot("Hong Kong", 22.3193, 114.1694, "2026-07-11", "celsius")
+
+        self.assertEqual(snapshot.hko_observation["max_temp_since_midnight"], 33.8)
+        self.assertFalse(snapshot.hko_observation["is_final"])

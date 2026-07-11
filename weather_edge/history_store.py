@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS settlement_observations (
     source TEXT NOT NULL, station TEXT, max_temp REAL, min_temp REAL, unit TEXT,
     status TEXT NOT NULL, reason TEXT, raw_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS hko_realtime_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recorded_at TEXT NOT NULL, target_date TEXT NOT NULL, observation_time TEXT,
+    current_temp REAL, max_temp_since_midnight REAL, min_temp_since_midnight REAL,
+    unit TEXT, healthy INTEGER NOT NULL, is_final INTEGER NOT NULL,
+    raw_payload_hash TEXT, raw_json TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS shadow_decisions (
     decision_id TEXT PRIMARY KEY, decision_time TEXT NOT NULL,
     event_id TEXT NOT NULL, event_slug TEXT NOT NULL, target_date TEXT NOT NULL,
@@ -74,7 +81,7 @@ def save_settlement_observation(path: str, city: str, target_date: str, observat
 def history_summary(path: str) -> dict:
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA)
-        names = ("monitor_snapshots", "forecast_observations", "market_observations", "bucket_observations", "settlement_observations", "shadow_decisions")
+        names = ("monitor_snapshots", "forecast_observations", "market_observations", "bucket_observations", "settlement_observations", "hko_realtime_observations", "shadow_decisions")
         return {name: int(conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]) for name in names}
 
 
@@ -113,6 +120,12 @@ def _city_snapshots(snapshot: dict) -> list[dict]:
 def _save_city_snapshot(conn, snapshot: dict, fallback_observed_at: str) -> None:
     observed_at = snapshot.get("observed_at", fallback_observed_at)
     city, target_date = snapshot.get("city", ""), snapshot.get("target_date", "")
+    hko = (snapshot.get("weather") or {}).get("hko_observation")
+    if city == "Hong Kong" and hko:
+        conn.execute(
+            "INSERT INTO hko_realtime_observations VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (observed_at, target_date, hko.get("observation_time", ""), hko.get("current_temp"), hko.get("max_temp_since_midnight"), hko.get("min_temp_since_midnight"), hko.get("unit", ""), int(bool(hko.get("healthy"))), int(bool(hko.get("is_final"))), hko.get("raw_payload_hash", ""), json.dumps(hko, sort_keys=True)),
+        )
     for forecast in (snapshot.get("weather") or {}).get("forecasts") or []:
         conn.execute(
             "INSERT INTO forecast_observations VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
