@@ -27,6 +27,16 @@ class LiveDataSourceParsingTests(unittest.TestCase):
         self.assertEqual(forecast.min_temp, 27.0)
         self.assertIn("Authorization", request.call_args.args[1])
 
+    def test_cwa_forecast_parses_official_capitalized_locations_key(self):
+        payload = {"records": {"Locations": [{"location": [{"weatherElement": [
+            {"elementName": "最高温度", "time": [{"startTime": "2026-07-12T06:00:00+08:00", "elementValue": [{"value": "34"}]}]},
+            {"elementName": "最低温度", "time": [{"startTime": "2026-07-12T06:00:00+08:00", "elementValue": [{"value": "27"}]}]},
+        ]}]}]}}
+        with patch.dict(os.environ, {"CWA_FORECAST_URL": "https://cwa.test/forecast", "CWA_API_KEY": "cwa-key"}), patch("weather_edge.weather_sources.get_json", return_value=payload):
+            forecast = fetch_configured_forecast("CWA", 25.03, 121.56, "2026-07-12", "C")
+        self.assertEqual(forecast.max_temp, 34.0)
+        self.assertEqual(forecast.min_temp, 27.0)
+
     def test_hko_forecast_reads_official_daily_high_low(self):
         with patch("weather_edge.weather_sources.get_json", return_value={"updateTime": "2026-07-10T11:30:00+08:00", "weatherForecast": [{"forecastDate": "20260710", "forecastMaxtemp": {"value": 32, "unit": "C"}, "forecastMintemp": {"value": 27, "unit": "C"}}]}):
             forecast = fetch_hko_forecast("Hong Kong", "2026-07-10")

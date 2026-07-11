@@ -136,7 +136,8 @@ def fetch_configured_forecast(provider: str, latitude: float, longitude: float, 
 def _extract_cwa_forecast(payload: dict, target_date: str) -> tuple[Optional[float], Optional[float], str]:
     maximum = minimum = None
     observed_at = ""
-    locations_value = ((payload.get("records") or {}).get("locations") or []) if isinstance(payload, dict) else []
+    records = payload.get("records") or {} if isinstance(payload, dict) else {}
+    locations_value = records.get("locations") or records.get("Locations") or []
     locations = locations_value if isinstance(locations_value, list) else [locations_value]
     for container in locations:
         location_items = container.get("location") if isinstance(container, dict) else []
