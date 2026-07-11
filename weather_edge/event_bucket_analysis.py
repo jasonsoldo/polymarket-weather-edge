@@ -8,7 +8,7 @@ from .pnl_curve import BucketInput, PnLCurve, build_pnl_curve
 from .position_manager import Position
 from .risk_manager import MarketState, RiskConfig, RiskDecision, evaluate_trade_plan
 from .settlement_source import settlement_source_capability, settlement_status_allows_scoring
-from .settlement_rules import BucketSpec, SettlementRule, parse_settlement_rule
+from .settlement_rules import BucketSpec, SettlementRule, normalize_bucket_sequence, parse_settlement_rule
 from .strategy_config import StrategyConfig
 from .strategy_planner import PlannedOrder
 from .weather_sources import WeatherSnapshot
@@ -73,6 +73,9 @@ def build_event_trade_plan(
     books = books or {}
     positions = positions or []
     parsed = [(market, parse_settlement_rule(market)) for market in markets]
+    event_buckets = normalize_bucket_sequence(tuple(item[1].buckets[0] for item in parsed if len(item[1].buckets) == 1))
+    parsed = [(market, SettlementRule(**{**rule.__dict__, "buckets": (event_buckets[index],)}) if index < len(event_buckets) and len(rule.buckets) == 1 else rule) for index, (market, rule) in enumerate(parsed)]
+    event_rounding = "interval" if len(event_buckets) == len(parsed) and len(event_buckets) > 1 else None
     rule = parsed[0][1]
     completeness_reasons = _completeness_reasons(parsed)
     model = build_probability_model(rule, weather)
@@ -92,7 +95,7 @@ def build_event_trade_plan(
             completeness_reasons.append(f"{market.market_id}: Yes token is required")
             continue
         market_price = market.outcome_prices[yes_index] if yes_index < len(market.outcome_prices) else 0.0
-        bucket_rows.append((market, bucket, token_id, market_price, bucket_model_probability(bucket, model, rule.rounding_rule)))
+        bucket_rows.append((market, bucket, token_id, market_price, bucket_model_probability(bucket, model, event_rounding or rule.rounding_rule)))
 
     complete = not completeness_reasons and _has_both_tails([row[1] for row in bucket_rows])
     if not _has_both_tails([row[1] for row in bucket_rows]):

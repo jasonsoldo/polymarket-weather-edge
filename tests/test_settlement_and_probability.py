@@ -6,7 +6,7 @@ from weather_edge.event_bucket_analysis import build_event_trade_plan
 from weather_edge.risk_manager import RiskConfig
 from weather_edge.strategy_config import StrategyConfig
 from weather_edge.market_scanner import WeatherMarket
-from weather_edge.settlement_rules import parse_bucket, parse_settlement_rule
+from weather_edge.settlement_rules import normalize_bucket_sequence, parse_bucket, parse_settlement_rule
 from weather_edge.weather_sources import DailyForecast, WeatherSnapshot
 
 
@@ -36,6 +36,13 @@ class SettlementAndProbabilityTests(unittest.TestCase):
         self.assertEqual(parse_bucket("87F").upper, 87)
         self.assertEqual(parse_bucket("87-89F").lower, 87)
         self.assertEqual(parse_bucket("87-89F").upper, 89)
+
+    def test_adjacent_temperature_labels_form_mutually_exclusive_ranges(self):
+        buckets = normalize_bucket_sequence(tuple(parse_bucket(label) for label in ("29C or below", "30C", "31C", "32C or higher")))
+        self.assertEqual((buckets[0].lower, buckets[0].upper), (None, 29))
+        self.assertEqual((buckets[1].lower, buckets[1].upper), (29, 30))
+        self.assertEqual((buckets[2].lower, buckets[2].upper), (30, 31))
+        self.assertEqual((buckets[3].lower, buckets[3].upper), (31, None))
 
     def test_parse_settlement_rule_extracts_required_weather_fields(self):
         market = _market()
@@ -102,6 +109,7 @@ class SettlementAndProbabilityTests(unittest.TestCase):
 
         self.assertEqual(len(plan.curve.rows), 3)
         self.assertTrue(plan.bucket_set_complete)
+        self.assertAlmostEqual(plan.probability_sum, 1.0, places=2)
         self.assertGreater(plan.curve.max_uncovered_probability, 0.08)
         self.assertTrue(plan.curve.death_gaps)
 

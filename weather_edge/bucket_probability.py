@@ -137,6 +137,12 @@ def _bucket_probability(
 
 
 def _rounded_bounds(bucket: BucketSpec, rounding_rule: str) -> tuple[Optional[float], Optional[float]]:
+    if rounding_rule == "interval":
+        return bucket.lower, bucket.upper
+    if bucket.lower is not None and bucket.upper is not None and bucket.lower != bucket.upper:
+        return bucket.lower, bucket.upper
+    if rounding_rule == "nearest_tenth" and (bucket.lower is None or bucket.upper is None):
+        return bucket.lower, bucket.upper
     if rounding_rule == "floor":
         lower = bucket.lower
         upper = None if bucket.upper is None else bucket.upper + 1.0

@@ -85,6 +85,22 @@ def parse_bucket(label: str) -> BucketSpec:
     return BucketSpec(cleaned, numbers[0], numbers[0])
 
 
+def normalize_bucket_sequence(buckets: tuple[BucketSpec, ...]) -> tuple[BucketSpec, ...]:
+    """Turn adjacent integer labels into the mutually exclusive ranges used by temperature events."""
+    normalized = []
+    previous_upper = None
+    for bucket in buckets:
+        lower, upper = bucket.lower, bucket.upper
+        if lower is not None and upper is not None and lower == upper and previous_upper is not None:
+            lower = previous_upper
+        elif upper is None and lower is not None and previous_upper is not None:
+            lower = previous_upper
+        normalized.append(BucketSpec(bucket.label, lower, upper))
+        if upper is not None:
+            previous_upper = upper
+    return tuple(normalized)
+
+
 def _parse_unit(text: str) -> str:
     lower = text.lower()
     if "°f" in lower:
@@ -200,7 +216,7 @@ def _parse_market_buckets(market: WeatherMarket) -> tuple[BucketSpec, ...]:
             bucket = parse_bucket(label)
             if bucket.lower is not None or bucket.upper is not None:
                 return (bucket,)
-    return tuple(parse_bucket(label) for label in market.outcomes)
+    return normalize_bucket_sequence(tuple(parse_bucket(label) for label in market.outcomes))
 
 
 def _bucket_label_from_question(question: str) -> str:
