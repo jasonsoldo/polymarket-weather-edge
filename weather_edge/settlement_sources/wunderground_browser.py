@@ -71,6 +71,7 @@ def fetch_wunderground_browser(url: str, station: str, target_date: str, unit: s
                 if response and response.status in (403, 429):
                     browser.close()
                     return WundergroundSnapshot("wu_unavailable", station, target_date, None, None, unit, source_url=url, reason=f"HTTP {response.status}")
+                _dismiss_consent(page)
                 _select_history_date(page, target_date)
                 html = page.content()
                 (directory / "page.html").write_text(html, encoding="utf-8")
@@ -100,3 +101,18 @@ def _select_history_date(page, target_date: str) -> None:
         except Exception:
             pass
         page.wait_for_timeout(1500)
+
+
+def _dismiss_consent(page) -> None:
+    """Handle a visible consent dialog; never bypass CAPTCHA or access controls."""
+    for frame in page.frames:
+        if frame == page.main_frame or "privacy-mgmt" not in (frame.url or ""):
+            continue
+        button = frame.get_by_role("button", name=re.compile(r"accept|agree|allow|continue", re.I)).first
+        if button.count():
+            try:
+                button.click(timeout=5000)
+                page.wait_for_timeout(500)
+                return
+            except Exception:
+                return
