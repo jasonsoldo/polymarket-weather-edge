@@ -348,7 +348,7 @@ def main(argv=None) -> int:
     if args.command == "hko-finalize-recent":
         from .hko_finalizer import finalize_hko_recent
 
-        print(json.dumps(finalize_hko_recent(args.lookback_days, args.history_db, args.positions_db, args.orders_db, args.pages), indent=2))
+        print(json.dumps(finalize_hko_recent(args.lookback_days, args.history_db, args.positions_db, args.orders_db, args.pages, progress=True), indent=2))
         return 0
 
     if args.command == "hko-backfill-polymarket":

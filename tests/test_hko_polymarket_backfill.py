@@ -4,10 +4,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from weather_edge.hko_polymarket_backfill import backfill_hko_polymarket
+from weather_edge.hko_polymarket_backfill import _expected_outcome, backfill_hko_polymarket
 
 
 class HkoPolymarketBackfillTests(unittest.TestCase):
+    def test_integer_bucket_covers_the_full_degree_interval(self):
+        question = "Will the highest temperature in Hong Kong be 30°C on May 31?"
+        self.assertEqual(_expected_outcome(question, 30.9), "Yes")
+        self.assertEqual(_expected_outcome(question, 31.0), "No")
+
     def test_backfill_requires_all_closed_buckets_to_match_hko(self):
         event = {
             "title": "Highest temperature in Hong Kong on June 1?",

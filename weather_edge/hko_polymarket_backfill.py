@@ -112,7 +112,7 @@ def _expected_outcome(question: str, temperature) -> Optional[str]:
     elif "or higher" in text or "or above" in text or "or more" in text:
         wins = value >= threshold
     else:
-        wins = abs(value - threshold) <= 0.051
+        wins = threshold <= value < threshold + 1.0 if threshold.is_integer() else abs(value - threshold) <= 0.051
     return "Yes" if wins else "No"
 
 

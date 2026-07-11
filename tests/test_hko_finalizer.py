@@ -2,6 +2,8 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -89,6 +91,14 @@ class HkoFinalizerTests(unittest.TestCase):
         self.assertEqual(result["available_days"], 1)
         self.assertEqual(result["pending_days"], 2)
         self.assertEqual([item["target_date"] for item in result["results"]], ["2026-07-10", "2026-07-09", "2026-07-08"])
+
+    def test_recent_finalizer_prints_progress(self):
+        output = StringIO()
+        with patch("weather_edge.hko_finalizer.yesterday_hong_kong", return_value="2026-07-10"), patch(
+            "weather_edge.hko_finalizer.finalize_hko_day", return_value={"status": "unavailable", "markets_resolved": 0, "positions_settled": 0, "realized_pnl": 0.0}
+        ), redirect_stderr(output):
+            finalize_hko_recent(1, "history.sqlite", "positions.sqlite", "orders.sqlite", progress=True)
+        self.assertIn("[1/1] 2026-07-10 unavailable", output.getvalue())
 
 
 if __name__ == "__main__":

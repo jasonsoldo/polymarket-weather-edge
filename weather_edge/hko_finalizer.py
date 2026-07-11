@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import sys
 from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -126,11 +127,17 @@ def finalize_hko_day(target_date: str, history_db: str, positions_db: str, order
     }
 
 
-def finalize_hko_recent(lookback_days: int, history_db: str, positions_db: str, orders_db: str, pages: int = 5) -> dict:
+def finalize_hko_recent(lookback_days: int, history_db: str, positions_db: str, orders_db: str, pages: int = 5, progress: bool = False) -> dict:
     if lookback_days < 1:
         raise ValueError("lookback_days must be at least 1")
     end = date.fromisoformat(yesterday_hong_kong())
-    results = [finalize_hko_day((end - timedelta(days=offset)).isoformat(), history_db, positions_db, orders_db, pages) for offset in range(lookback_days)]
+    results = []
+    for offset in range(lookback_days):
+        target_date = (end - timedelta(days=offset)).isoformat()
+        result = finalize_hko_day(target_date, history_db, positions_db, orders_db, pages)
+        results.append(result)
+        if progress:
+            print(f"[{offset + 1}/{lookback_days}] {target_date} {result.get('status', 'unknown')}", file=sys.stderr, flush=True)
     return {
         "lookback_days": lookback_days,
         "available_days": sum(item.get("status") == "finalized" for item in results),
