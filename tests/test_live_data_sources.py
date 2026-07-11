@@ -39,8 +39,8 @@ class LiveDataSourceParsingTests(unittest.TestCase):
 
     def test_cwa_forecast_parses_official_capitalized_location_key(self):
         payload = {"records": {"Locations": [{"Location": [{"WeatherElement": [
-            {"elementName": "最高温度", "time": [{"startTime": "2026-07-12T06:00:00+08:00", "elementValue": [{"value": "34"}]}]},
-            {"elementName": "最低温度", "time": [{"startTime": "2026-07-12T06:00:00+08:00", "elementValue": [{"value": "27"}]}]},
+            {"ElementName": "最高温度", "Time": [{"StartTime": "2026-07-12T06:00:00+08:00", "ElementValue": [{"Value": "34"}]}]},
+            {"ElementName": "最低温度", "Time": [{"StartTime": "2026-07-12T06:00:00+08:00", "ElementValue": [{"Value": "27"}]}]},
         ]}]}]}}
         with patch.dict(os.environ, {"CWA_FORECAST_URL": "https://cwa.test/forecast", "CWA_API_KEY": "cwa-key"}), patch("weather_edge.weather_sources.get_json", return_value=payload):
             forecast = fetch_configured_forecast("CWA", 25.03, 121.56, "2026-07-12", "C")

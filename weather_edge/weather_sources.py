@@ -148,15 +148,16 @@ def _extract_cwa_forecast(payload: dict, target_date: str) -> tuple[Optional[flo
         for location in location_items or []:
             elements = location.get("weatherElement") or location.get("WeatherElement") or []
             for element in elements:
-                name = str(element.get("elementName") or "").lower()
+                name = str(element.get("elementName") or element.get("ElementName") or "").lower()
                 if "最高" not in name and "最低" not in name and "maxt" not in name and "mint" not in name:
                     continue
-                for item in element.get("time") or []:
-                    start = str(item.get("startTime") or item.get("dataTime") or "")
+                for item in element.get("time") or element.get("Time") or []:
+                    start = str(item.get("startTime") or item.get("StartTime") or item.get("dataTime") or item.get("DataTime") or "")
                     if not start.startswith(target_date):
                         continue
-                    value = ((item.get("elementValue") or [{}])[0] if isinstance(item.get("elementValue"), list) else item.get("elementValue"))
-                    value = value.get("value") if isinstance(value, dict) else value
+                    raw_value = item.get("elementValue") or item.get("ElementValue")
+                    value = (raw_value or [{}])[0] if isinstance(raw_value, list) else raw_value
+                    value = (value.get("value") or value.get("Value")) if isinstance(value, dict) else value
                     try:
                         number = float(value)
                     except (TypeError, ValueError):
