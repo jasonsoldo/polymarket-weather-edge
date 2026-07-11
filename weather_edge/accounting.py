@@ -78,4 +78,7 @@ def apply_fill(
 def realized_pnl(orders_db: str) -> float:
     init_accounting_db(orders_db)
     with sqlite3.connect(orders_db) as conn:
-        return float(conn.execute("SELECT COALESCE(SUM(realized_pnl), 0) FROM fills").fetchone()[0])
+        fills = float(conn.execute("SELECT COALESCE(SUM(realized_pnl), 0) FROM fills").fetchone()[0])
+        table = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'simulation_settlements'").fetchone()
+        settlements = float(conn.execute("SELECT COALESCE(SUM(realized_pnl), 0) FROM simulation_settlements").fetchone()[0]) if table else 0.0
+        return fills + settlements

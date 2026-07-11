@@ -1,0 +1,10 @@
+[Unit]
+Description=Run WeatherEdge Hong Kong finalizer every day
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+Unit=weather-edge-hko-finalizer.service
+
+[Install]
+WantedBy=timers.target

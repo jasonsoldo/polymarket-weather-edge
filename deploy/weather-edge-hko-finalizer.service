@@ -1,0 +1,12 @@
+[Unit]
+Description=WeatherEdge Hong Kong daily settlement finalizer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=jason
+WorkingDirectory=/opt/polymarket-weather-edge
+EnvironmentFile=/etc/weather-edge.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli hko-finalize-day --date yesterday --history-db /opt/polymarket-weather-edge/data/market_history.sqlite --positions-db /opt/polymarket-weather-edge/data/positions.sqlite --orders-db /opt/polymarket-weather-edge/data/orders.sqlite --pages 5

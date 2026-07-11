@@ -67,6 +67,13 @@ def main(argv=None) -> int:
     hko_backfill_parser.add_argument("--output", default="data/validation/hko_polymarket.jsonl")
     hko_backfill_parser.add_argument("--pages", type=int, default=3)
 
+    hko_finalize_parser = sub.add_parser("hko-finalize-day")
+    hko_finalize_parser.add_argument("--date", default="yesterday")
+    hko_finalize_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    hko_finalize_parser.add_argument("--positions-db", default="data/positions.sqlite")
+    hko_finalize_parser.add_argument("--orders-db", default="data/orders.sqlite")
+    hko_finalize_parser.add_argument("--pages", type=int, default=5)
+
     history_parser = sub.add_parser("history-summary")
     history_parser.add_argument("--db", default="data/market_history.sqlite")
 
@@ -323,6 +330,12 @@ def main(argv=None) -> int:
         from .hko_history import import_hko_history
 
         print(json.dumps(import_hko_history(args.input, args.history_db), indent=2))
+        return 0
+
+    if args.command == "hko-finalize-day":
+        from .hko_finalizer import finalize_hko_day
+
+        print(json.dumps(finalize_hko_day(args.date, args.history_db, args.positions_db, args.orders_db, args.pages), indent=2))
         return 0
 
     if args.command == "hko-backfill-polymarket":
