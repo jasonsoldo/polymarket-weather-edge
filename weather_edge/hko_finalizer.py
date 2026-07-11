@@ -132,3 +132,32 @@ def _is_dry_run_position(conn: sqlite3.Connection, market_id: str, token_id: str
         (market_id, token_id),
     ).fetchone()
     return bool(row)
+
+
+def hko_closure_status(history_db: str, orders_db: str) -> dict:
+    status = {"settlement_verified": False, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_realized_pnl": 0.0, "last_finalized_at": ""}
+    try:
+        with closing(sqlite3.connect(history_db)) as conn:
+            row = conn.execute(
+                "SELECT target_date, max_temp, recorded_at FROM settlement_observations WHERE city = 'Hong Kong' AND status = 'available' ORDER BY target_date DESC, id DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                status.update({"last_final_date": row[0], "final_daily_max": row[1], "last_finalized_at": row[2]})
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hko_market_resolutions'").fetchone():
+                rows = conn.execute(
+                    "SELECT question, resolved_outcome, settlement_match FROM hko_market_resolutions WHERE target_date = ?",
+                    (status["last_final_date"],),
+                ).fetchall()
+                status["markets_resolved"] = len(rows)
+                status["settlement_matches"] = sum(int(item[2]) for item in rows)
+                status["winning_buckets"] = [item[0] for item in rows if item[1] == "Yes"]
+                status["settlement_verified"] = bool(rows) and status["settlement_matches"] == len(rows)
+    except sqlite3.Error:
+        pass
+    try:
+        with closing(sqlite3.connect(orders_db)) as conn:
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='simulation_settlements'").fetchone():
+                status["shadow_realized_pnl"] = float(conn.execute("SELECT COALESCE(SUM(realized_pnl), 0) FROM simulation_settlements").fetchone()[0])
+    except sqlite3.Error:
+        pass
+    return status

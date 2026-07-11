@@ -9,6 +9,7 @@ from .event_bucket_analysis import build_event_trade_plan, group_event_markets
 from .alert_manager import emit_alerts
 from .http_client import get_json
 from .history_store import save_monitor_snapshot
+from .hko_finalizer import hko_closure_status
 from .market_scanner import fetch_weather_markets, get_last_scan_stats
 from .city_registry import load_city_registry
 from .orderbook import fetch_book_summary
@@ -170,6 +171,8 @@ def build_all_cities_snapshot(
         "strict_markets_found": len(strict_markets),
         "strict_markets": [market.to_dict() for market in strict_markets],
         "risk_capital_limit": RiskConfig().max_total_exposure,
+        "portfolio": portfolio_snapshot("data/positions.sqlite"),
+        "hong_kong_closure": hko_closure_status("data/market_history.sqlite", "data/orders.sqlite"),
         "unresolved_cities": unresolved_cities,
         "markets_scanned": get_last_scan_stats().get("markets_scanned", 0),
         "temperature_markets_found": len(strict_markets),

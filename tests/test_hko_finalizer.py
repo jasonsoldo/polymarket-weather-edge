@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from weather_edge.accounting import realized_pnl
-from weather_edge.hko_finalizer import finalize_hko_day
+from weather_edge.hko_finalizer import finalize_hko_day, hko_closure_status
 from weather_edge.order_store import StoredOrder, save_order
 from weather_edge.position_manager import Position, load_positions, upsert_position
 from weather_edge.settlement_source import SettlementSourceResult
@@ -40,6 +40,10 @@ class HkoFinalizerTests(unittest.TestCase):
             self.assertEqual(second["positions_settled"], 0)
             self.assertEqual(load_positions(positions_db), [])
             self.assertAlmostEqual(realized_pnl(orders_db), 0.6)
+            closure = hko_closure_status(history_db, orders_db)
+            self.assertTrue(closure["settlement_verified"])
+            self.assertEqual(closure["final_daily_max"], 31.0)
+            self.assertAlmostEqual(closure["shadow_realized_pnl"], 0.6)
             with closing(sqlite3.connect(history_db)) as conn:
                 row = conn.execute("SELECT expected_outcome, resolved_outcome, settlement_match FROM hko_market_resolutions").fetchone()
             self.assertEqual(row, ("Yes", "Yes", 1))

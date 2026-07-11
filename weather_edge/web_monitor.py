@@ -66,7 +66,8 @@ def _render_terminal_dashboard(snapshot: dict, history: list[dict]) -> str:
 <section class='signal-panel panel'><div class='panel-head'><div><small class='overline'>MARKET RELATIONSHIP GRAPH</small><h2>City / source / bucket signal map</h2></div><span class='mini-label'>NODES {_esc(len(_monitor_rows(snapshot)))} · RISK GATED</span></div><div class='signal-layout'><div class='signal-legend'><span><i class='red-dot'></i>blocked signal</span><span><i class='green-dot'></i>watch signal</span><span><i class='black-dot'></i>settlement hub</span><b>{_esc(len(snapshot.get('cities', [])))} CITIES</b><small>{_esc(snapshot.get('markets_scanned', 0))} markets scanned<br>{_esc(snapshot.get('excluded_markets', 0))} excluded by filter</small></div>{_signal_graph(snapshot)}<div class='signal-readout'><small>P(TRADE)</small><b>0.00</b><small>P(NO TRADE)</small><b class='negative'>1.00</b><div class='edge-meter'></div><small>CONFIDENCE</small><b>{_esc(_top_confidence(snapshot))}</b></div></div></section>
 <section class='pattern-panel panel'><div class='panel-head'><div><small class='overline'>PATTERN ENGINE · BUCKET CURVE</small><h2>Forecast vs market price</h2></div><span class='mini-label'>PROBABILITY · EDGE · EXECUTION</span></div><div class='pattern-layout'><div class='pattern-chart'>{_price_chart(snapshot)}</div><div class='pattern-copy'><span class='terminal-badge { _esc(action) }'>{_esc(action)}</span><b>{_esc(_top_event_reason(snapshot))}</b><small>Every bucket is checked for coverage, spread, liquidity, settlement source and PnL if wins.</small></div></div></section>
 <section class='status-bar'><div><small>SYSTEM ACTION</small><strong class='{_state_class(action)}'>{_esc(action)}</strong><span>{_esc(blockers[0] if blockers else 'No active blockers')}</span></div><div class='scan-state'><small>DISCOVERY</small><b>{_esc(snapshot.get('scan_completed', False))}</b><span>{_esc(snapshot.get('pages_scanned', 0))} pages · {_esc(snapshot.get('markets_scanned', 0))} scanned</span></div></section>
-<section class='metric-grid'>{_terminal_metric('CITIES', snapshot.get('cities_discovered', snapshot.get('cities_monitored', 0)), 'registered ' + str(snapshot.get('registered_cities', 0)))}{_terminal_metric('TEMP MARKETS', snapshot.get('temperature_markets_found', snapshot.get('markets_found', 0)), 'strict discovery')}{_terminal_metric('COST BASIS', _number(portfolio.get('cost_basis', 0)), 'capital deployed')}{_terminal_metric('MARKED VALUE', _number(portfolio.get('market_value', 0)), 'bid marked')}{_terminal_metric('UNREALIZED PNL', _number(portfolio.get('unrealized_pnl', 0)), 'live estimate')}{_terminal_metric('STALE POSITIONS', portfolio.get('stale_positions', 0), 'must be zero')}</section>
+{_hong_kong_strip(snapshot)}
+<section class='metric-grid'>{_terminal_metric('HK MARKETS', _hong_kong_market_count(snapshot), 'highest temperature only')}{_terminal_metric('HK CONFIDENCE', _hong_kong_confidence(snapshot), 'forecast gate')}{_terminal_metric('COST BASIS', _number(portfolio.get('cost_basis', 0)), 'shadow capital')}{_terminal_metric('SHADOW REALIZED', _number((snapshot.get('hong_kong_closure') or {}).get('shadow_realized_pnl', 0)), 'finalized PnL')}{_terminal_metric('UNREALIZED PNL', _number(portfolio.get('unrealized_pnl', 0)), 'live estimate')}{_terminal_metric('STALE POSITIONS', portfolio.get('stale_positions', 0), 'must be zero')}</section>
 <section class='main-grid'><section class='panel market-panel'><div class='panel-head'><div><small class='overline'>LIVE MARKET TAPE</small><h2>Real Weather Markets</h2></div><a href='/markets'>VIEW ALL →</a></div><div class='table-wrap'><table><thead><tr><th>City / station</th><th>Market / settlement</th><th>Model / weather</th><th>Investment</th><th>Potential</th><th>Max loss</th><th>Action</th></tr></thead><tbody>{''.join(market_rows) or "<tr><td colspan='7' class='quiet'>No strict city temperature markets found.</td></tr>"}</tbody></table></div></section><aside class='side-stack'><section class='panel'><div class='panel-head'><div><small class='overline'>RISK ENGINE</small><h2>Blockers</h2></div><a href='/risk'>DETAILS →</a></div>{blocker_html}</section><section class='panel chart-panel'><div class='panel-head'><div><small class='overline'>P&L CURVE</small><h2>Current event shape</h2></div><span class='mini-label'>SIMULATION</span></div>{chart}</section></aside></section>
 <section class='panel city-panel'><div class='panel-head'><div><small class='overline'>WEATHER NETWORK</small><h2>City pulse</h2></div><a href='/cities'>VIEW ALL →</a></div><div class='city-list'>{''.join(city_rows) or "<div class='quiet'>No cities discovered.</div>"}</div></section>
 <section class='pulse-panel panel'><div class='panel-head'><div><small class='overline'>ALL CITIES PULSE</small><h2>Real weather market activity</h2></div><span class='mini-label'>AUTO-REFRESH 30S</span></div>{_pulse_chart(snapshot)}</section>
@@ -75,6 +76,30 @@ def _render_terminal_dashboard(snapshot: dict, history: list[dict]) -> str:
 
 def _terminal_metric(label, value, note):
     return f"<div class='metric-card'><small>{_esc(label)}</small><b>{_esc(value)}</b><span>{_esc(note)}</span></div>"
+
+
+def _hong_kong_city(snapshot):
+    return next((city for city in snapshot.get("cities", []) if city.get("city") == "Hong Kong"), {})
+
+
+def _hong_kong_market_count(snapshot):
+    return _hong_kong_city(snapshot).get("markets_found", 0)
+
+
+def _hong_kong_confidence(snapshot):
+    value = (_hong_kong_city(snapshot).get("weather") or {}).get("confidence")
+    return f"{float(value) * 100:.0f}%" if value is not None else "-"
+
+
+def _hong_kong_strip(snapshot):
+    city = _hong_kong_city(snapshot)
+    weather = city.get("weather") or {}
+    closure = snapshot.get("hong_kong_closure") or {}
+    forecasts = weather.get("forecasts") or []
+    hko = next((item for item in forecasts if item.get("source") == "hko_forecast"), {})
+    state = "VERIFIED" if closure.get("settlement_verified") else "PENDING"
+    blocker = "" if state == "VERIFIED" else "pending_hko_settlement_validation"
+    return f"<section class='status-bar'><div><small>HONG KONG FIRST</small><strong class='{_state_class(state)}'>{_esc(state)}</strong><span>{_esc(blocker or 'HKO final result matches Polymarket')}</span></div><div class='scan-state'><small>HKO / SHADOW</small><b>{_esc(hko.get('max_temp', '-'))}°C</b><span>final {_esc(closure.get('final_daily_max', '-'))}°C · realized {_esc(_number(closure.get('shadow_realized_pnl', 0)))}</span></div><a href='/hong-kong'>DETAILS →</a></section>"
 
 
 def _top_confidence(snapshot):
@@ -261,23 +286,25 @@ def _overview_css():
 MODULES = {
     "/": "overview", "/overview": "overview", "/cities": "cities", "/markets": "markets",
     "/weather-sources": "weather", "/settlement-sources": "settlement", "/candidates": "candidates",
-    "/positions": "positions", "/risk": "risk", "/alerts": "alerts", "/logs": "logs", "/settings": "settings",
+    "/hong-kong": "hong_kong", "/positions": "positions", "/risk": "risk", "/alerts": "alerts", "/logs": "logs", "/settings": "settings",
 }
 
 def render_module_page(snapshot: dict, path: str, history: list[dict]) -> str:
     module = MODULES.get(path, "overview")
     if module == "overview":
         return render_dashboard(snapshot, history)
-    title = {"cities":"Cities", "markets":"Markets", "weather":"Weather Sources", "settlement":"Settlement Sources", "candidates":"Candidates", "positions":"Positions", "risk":"Risk", "alerts":"Alerts", "logs":"Logs", "settings":"Settings"}.get(module, module.title())
+    title = {"hong_kong":"Hong Kong", "cities":"Cities", "markets":"Markets", "weather":"Weather Sources", "settlement":"Settlement Sources", "candidates":"Candidates", "positions":"Positions", "risk":"Risk", "alerts":"Alerts", "logs":"Logs", "settings":"Settings"}.get(module, module.title())
     cards = _module_rows(snapshot, module, history)
     return _module_shell(title, snapshot, cards)
 
 def _module_shell(title, snapshot, body):
-    nav = " ".join(f"<a href='{path}'>{label}</a>" for path, label in (("/overview","Overview"),("/cities","Cities"),("/markets","Markets"),("/weather-sources","Weather Sources"),("/settlement-sources","Settlement Sources"),("/candidates","Candidates"),("/positions","Positions"),("/risk","Risk"),("/alerts","Alerts"),("/logs","Logs"),("/settings","Settings")))
+    nav = " ".join(f"<a href='{path}'>{label}</a>" for path, label in (("/overview","Overview"),("/hong-kong","Hong Kong"),("/cities","Cities"),("/markets","Markets"),("/weather-sources","Weather Sources"),("/settlement-sources","Settlement Sources"),("/candidates","Candidates"),("/positions","Positions"),("/risk","Risk"),("/alerts","Alerts"),("/logs","Logs"),("/settings","Settings")))
     return f"""<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='refresh' content='30'><title>WeatherEdge { _esc(title) }</title><style>body{{margin:0;background:#f4f7fb;color:#172033;font:14px Arial}}main{{max-width:1500px;margin:auto;padding:24px}}header{{display:flex;justify-content:space-between;gap:16px;align-items:end}}nav{{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}}nav a{{padding:8px 11px;border-radius:6px;background:#fff;border:1px solid #d9e1ec;color:#175cd3;text-decoration:none}}.panel{{background:#fff;border:1px solid #d9e1ec;border-radius:8px;padding:16px;overflow:auto}}.item{{padding:12px 0;border-bottom:1px solid #e8edf3}}.item:last-child{{border:0}}.bad{{color:#b42318;font-weight:700}}.good{{color:#067647;font-weight:700}}.muted{{color:#667085}}table{{width:100%;border-collapse:collapse;min-width:800px}}th,td{{padding:10px;border-bottom:1px solid #e8edf3;text-align:left;vertical-align:top}}th{{color:#475467;background:#f8fafc;position:sticky;top:0}}</style></head><body><main><header><div><h1>WeatherEdge / {_esc(title)}</h1><div class='muted'>Risk-gated simulation | last refresh {_esc(snapshot.get('observed_at',''))}</div></div><strong class='{ 'bad' if snapshot.get('recommended_action') == 'NO_TRADE' else 'good' }'>{_esc(snapshot.get('recommended_action','UNKNOWN'))}</strong></header><nav>{nav}</nav><section class='panel'>{body}</section></main></body></html>"""
 
 def _module_rows(snapshot, module, history):
     cities = snapshot.get("cities", [snapshot])
+    if module == "hong_kong":
+        return _hong_kong_module(snapshot)
     if module == "cities":
         return "".join(f"<div class='item'><h3>{_esc(c.get('city',''))}</h3>markets {c.get('markets_found',0)} | confidence {_esc((c.get('weather') or {}).get('confidence',''))} | disagreement {_esc((c.get('weather') or {}).get('disagreement',''))}<br><span class='muted'>{_esc(c.get('city_registry_status','registered'))} | {_esc(c.get('recommended_action',''))} | {_esc((c.get('risk_reasons') or [c.get('block_reason','')])[0])}</span></div>" for c in cities) or "No discovered cities"
     if module == "markets":
@@ -311,6 +338,19 @@ def _module_rows(snapshot, module, history):
     if module == "settings":
         return "<p>Read-only dashboard. Trading remains disabled unless all explicit live execution guards are enabled.</p><p>Refresh: 30s | Raw snapshot is available only through the existing debug API.</p>"
     return ""
+
+
+def _hong_kong_module(snapshot):
+    city = _hong_kong_city(snapshot)
+    weather = city.get("weather") or {}
+    closure = snapshot.get("hong_kong_closure") or {}
+    forecasts = weather.get("forecasts") or []
+    forecast_rows = [(item.get("source", ""), item.get("max_temp", ""), item.get("unit", ""), item.get("updated_at", "")) for item in forecasts]
+    verified = bool(closure.get("settlement_verified"))
+    state = "official_source_verified" if verified else "pending"
+    blocker = "" if verified else "pending_hko_settlement_validation"
+    summary = _table(("Settlement status", "Last final date", "Final daily max", "Resolved markets", "Matches", "Shadow realized PnL", "Block reason"), [(state, closure.get("last_final_date", ""), closure.get("final_daily_max", ""), closure.get("markets_resolved", 0), closure.get("settlement_matches", 0), _number(closure.get("shadow_realized_pnl", 0)), blocker)])
+    return "<h2>Hong Kong Overview</h2>" + summary + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Winning buckets</h2>" + "".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket"
 
 def _table(headers, rows):
     if not rows: return ""
