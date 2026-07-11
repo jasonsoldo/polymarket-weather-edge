@@ -59,6 +59,8 @@ class HkoFinalizerTests(unittest.TestCase):
             self.assertAlmostEqual(closure["shadow_realized_pnl"], 0.6)
             self.assertEqual((closure["shadow_samples"], closure["shadow_finalized"]), (1, 1))
             self.assertAlmostEqual(closure["shadow_hypothetical_pnl"], 0.6)
+            self.assertEqual(closure["recent_shadow_reconciliations"][0]["final_temperature"], 31.0)
+            self.assertAlmostEqual(closure["recent_shadow_reconciliations"][0]["hypothetical_realized_pnl"], 0.6)
             with closing(sqlite3.connect(history_db)) as conn:
                 row = conn.execute("SELECT expected_outcome, resolved_outcome, settlement_match FROM hko_market_resolutions").fetchone()
             self.assertEqual(row, ("Yes", "Yes", 1))

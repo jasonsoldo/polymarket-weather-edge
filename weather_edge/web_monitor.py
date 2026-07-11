@@ -347,6 +347,8 @@ def _hong_kong_module(snapshot):
     forecasts = weather.get("forecasts") or []
     observation = weather.get("hko_observation") or {}
     forecast_rows = [(item.get("source", ""), item.get("max_temp", ""), item.get("unit", ""), item.get("updated_at", "")) for item in forecasts]
+    plans = [item.get("event_bucket_plan") or {} for item in city.get("markets") or [] if item.get("event_bucket_plan")]
+    model = (plans[0].get("forecast_model") if plans else {}) or {}
     verified = bool(closure.get("settlement_verified"))
     state = "official_source_verified" if verified else "pending_hko_settlement_validation"
     blocker = "" if verified else "pending_hko_settlement_validation"
@@ -360,7 +362,24 @@ def _hong_kong_module(snapshot):
             "YES" if observation.get("is_final") else "NO (provisional)",
         )],
     )
-    return "<h2>Hong Kong Overview</h2>" + summary + "<h2>HKO Live Observation</h2>" + realtime + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Winning buckets</h2>" + "".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket"
+    dynamic = _table(
+        ("Dynamic update", "Model mean", "Sigma", "Observation floor"),
+        [("ACTIVE" if model.get("dynamic_update") else "INACTIVE", _number(model.get("mean", 0)), _number(model.get("standard_deviation", 0)), model.get("observation_floor", ""))],
+    )
+    reconciliations = _table(
+        ("Date", "Event", "Final max", "Hypothetical PnL", "Finalized"),
+        [(item.get("target_date", ""), item.get("event_slug", ""), item.get("final_temperature", ""), _number(item.get("hypothetical_realized_pnl", 0)), item.get("finalized_at", "")) for item in closure.get("recent_shadow_reconciliations", [])],
+    ) or "No finalized shadow decision"
+    bucket_rows = []
+    death_gaps = []
+    for plan in plans:
+        curve = plan.get("curve") or {}
+        death_gaps.extend(str(item.get("bucket", "")) for item in curve.get("death_gaps", []))
+        for row in curve.get("rows", []):
+            bucket_rows.append((row.get("bucket", ""), f"{float(row.get('model_probability') or 0) * 100:.2f}%", row.get("price", ""), row.get("edge", ""), row.get("cost", ""), row.get("pnl_if_wins", "")))
+    buckets = _table(("Bucket", "Probability", "Market price", "Edge", "Cost", "PnL if wins"), bucket_rows) or "No bucket probability data"
+    gaps = ", ".join(dict.fromkeys(death_gaps)) or "None"
+    return "<h2>Hong Kong Overview</h2>" + summary + "<h2>HKO Live Observation</h2>" + realtime + "<h2>Dynamic Probability</h2>" + dynamic + buckets + f"<div class='item bad'>Death gaps: {_esc(gaps)}</div>" + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Shadow Reconciliation</h2>" + reconciliations + "<h2>Winning buckets</h2>" + ("".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket")
 
 def _table(headers, rows):
     if not rows: return ""

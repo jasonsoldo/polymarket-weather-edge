@@ -188,7 +188,7 @@ def _finalize_shadow_decisions(conn: sqlite3.Connection, target_date: str, recor
 
 
 def hko_closure_status(history_db: str, orders_db: str) -> dict:
-    status = {"settlement_verified": False, "settlement_audit_passed": False, "historical_validation_ready": False, "audit_days": 0, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_samples": 0, "shadow_finalized": 0, "shadow_hypothetical_pnl": 0.0, "shadow_realized_pnl": 0.0, "last_finalized_at": ""}
+    status = {"settlement_verified": False, "settlement_audit_passed": False, "historical_validation_ready": False, "audit_days": 0, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_samples": 0, "shadow_finalized": 0, "shadow_hypothetical_pnl": 0.0, "shadow_realized_pnl": 0.0, "last_finalized_at": "", "recent_shadow_reconciliations": []}
     try:
         with closing(sqlite3.connect(history_db)) as conn:
             row = conn.execute(
@@ -209,6 +209,19 @@ def hko_closure_status(history_db: str, orders_db: str) -> dict:
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='shadow_decisions'").fetchone():
                 shadow = conn.execute("SELECT COUNT(*), SUM(CASE WHEN finalized_at IS NOT NULL THEN 1 ELSE 0 END), COALESCE(SUM(hypothetical_realized_pnl), 0) FROM shadow_decisions").fetchone()
                 status.update({"shadow_samples": int(shadow[0]), "shadow_finalized": int(shadow[1] or 0), "shadow_hypothetical_pnl": float(shadow[2] or 0)})
+                recent = conn.execute(
+                    """SELECT d.target_date, d.event_slug, d.recommended_action,
+                              d.hypothetical_realized_pnl, d.finalized_at,
+                              (SELECT s.max_temp FROM settlement_observations s
+                               WHERE s.city = 'Hong Kong' AND s.target_date = d.target_date AND s.status = 'available'
+                               ORDER BY s.id DESC LIMIT 1)
+                       FROM shadow_decisions d WHERE d.finalized_at IS NOT NULL
+                       ORDER BY d.finalized_at DESC LIMIT 10"""
+                ).fetchall()
+                status["recent_shadow_reconciliations"] = [
+                    {"target_date": item[0], "event_slug": item[1], "recommended_action": item[2], "hypothetical_realized_pnl": item[3], "finalized_at": item[4], "final_temperature": item[5]}
+                    for item in recent
+                ]
             status["historical_validation_ready"] = status["audit_days"] >= 30 and status["shadow_finalized"] >= 7
             status["settlement_verified"] = status["historical_validation_ready"] and os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true"
     except sqlite3.Error:

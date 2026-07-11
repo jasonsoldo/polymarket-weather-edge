@@ -15,6 +15,8 @@ class ProbabilityModel:
     disagreement: Optional[float]
     confidence: float
     target_temperature_type: str
+    observation_floor: Optional[float]
+    dynamic_update: bool
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -83,6 +85,7 @@ def build_probability_model(rule: SettlementRule, weather: WeatherSnapshot) -> P
     if not values:
         raise ValueError("no forecast values available for market type")
     mean = sum(values) / len(values)
+    observation_floor = _observation_floor(rule, weather)
     return ProbabilityModel(
         mean=mean,
         standard_deviation=_stddev(rule, weather, values),
@@ -90,11 +93,15 @@ def build_probability_model(rule: SettlementRule, weather: WeatherSnapshot) -> P
         disagreement=weather.disagreement,
         confidence=min(rule.confidence, weather.confidence),
         target_temperature_type=rule.market_type,
+        observation_floor=observation_floor,
+        dynamic_update=observation_floor is not None,
     )
 
 
 def bucket_model_probability(bucket: BucketSpec, model: ProbabilityModel, rounding_rule: str) -> float:
-    return _bucket_probability(bucket, model.mean, model.standard_deviation, rounding_rule)
+    if model.observation_floor is None:
+        return _bucket_probability(bucket, model.mean, model.standard_deviation, rounding_rule)
+    return _conditional_bucket_probability(bucket, model.mean, model.standard_deviation, rounding_rule, model.observation_floor)
 
 
 def _forecast_values(rule: SettlementRule, weather: WeatherSnapshot) -> list[float]:
@@ -118,6 +125,29 @@ def _stddev(rule: SettlementRule, weather: WeatherSnapshot, values: list[float])
     disagreement_component = disagreement / 2.0
     confidence_penalty = max(0.0, 0.80 - min(rule.confidence, weather.confidence)) * 2.0
     return max(1.0, sample, disagreement_component, confidence_penalty)
+
+
+def _observation_floor(rule: SettlementRule, weather: WeatherSnapshot) -> Optional[float]:
+    observation = weather.hko_observation or {}
+    if rule.city != "Hong Kong" or rule.market_type != "max_temp" or not observation.get("healthy"):
+        return None
+    value = observation.get("max_temp_since_midnight")
+    if value is None:
+        return None
+    return _convert_temperature(float(value), observation.get("unit", "C"), rule.measurement_unit)
+
+
+def _conditional_bucket_probability(bucket: BucketSpec, mean: float, stddev: float, rounding_rule: str, floor: float) -> float:
+    lower, upper = _rounded_bounds(bucket, rounding_rule)
+    if upper is not None and upper <= floor:
+        return 0.0
+    effective_lower = floor if lower is None else max(lower, floor)
+    denominator = max(1e-12, 1.0 - _normal_cdf(floor, mean, stddev))
+    if upper is None:
+        numerator = 1.0 - _normal_cdf(effective_lower, mean, stddev)
+    else:
+        numerator = max(0.0, _normal_cdf(upper, mean, stddev) - _normal_cdf(effective_lower, mean, stddev))
+    return min(1.0, numerator / denominator)
 
 
 def _bucket_probability(

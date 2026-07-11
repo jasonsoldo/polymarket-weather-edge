@@ -114,6 +114,24 @@ class SettlementAndProbabilityTests(unittest.TestCase):
         self.assertGreater(plan.curve.max_uncovered_probability, 0.08)
         self.assertTrue(plan.curve.death_gaps)
 
+    def test_hko_since_midnight_max_truncates_impossible_high_temperature_buckets(self):
+        markets = [_hong_kong_market("25C or below"), _hong_kong_market("26C"), _hong_kong_market("27C or higher")]
+        weather = WeatherSnapshot(
+            "Hong Kong", 22.3, 114.2, "2026-07-10",
+            (DailyForecast("hko_forecast", "2026-07-10", 27.0, 23.0, "C", "1", "", "Asia/Hong_Kong", "hko", "HKO"),),
+            None, 0.85,
+            {"healthy": True, "max_temp_since_midnight": 26.4, "current_temp": 25.8, "unit": "C", "is_final": False},
+        )
+
+        plan = build_event_trade_plan(markets, weather, StrategyConfig(max_buckets_to_buy=1), RiskConfig())
+
+        probabilities = {row.bucket: row.model_probability for row in plan.curve.rows}
+        self.assertEqual(probabilities["25C or below"], 0.0)
+        self.assertEqual(probabilities["26C"], 0.0)
+        self.assertAlmostEqual(sum(probabilities.values()), 1.0)
+        self.assertEqual(plan.forecast_model.observation_floor, 26.4)
+        self.assertTrue(plan.forecast_model.dynamic_update)
+
     def test_blocked_event_includes_simulation_only_coverage_candidate(self):
         markets = [_hong_kong_market("25C or below"), _hong_kong_market("26C"), _hong_kong_market("27C or higher")]
         weather = WeatherSnapshot(
