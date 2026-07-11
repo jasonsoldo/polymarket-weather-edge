@@ -3,6 +3,7 @@ from dataclasses import replace
 
 from weather_edge.bucket_probability import build_bucket_probabilities, build_probability_model
 from weather_edge.event_bucket_analysis import build_event_trade_plan
+from weather_edge.live_pipeline import _markets_for_target_date
 from weather_edge.risk_manager import RiskConfig
 from weather_edge.strategy_config import StrategyConfig
 from weather_edge.market_scanner import WeatherMarket
@@ -112,6 +113,11 @@ class SettlementAndProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(plan.probability_sum, 1.0, places=2)
         self.assertGreater(plan.curve.max_uncovered_probability, 0.08)
         self.assertTrue(plan.curve.death_gaps)
+
+    def test_dry_run_filters_markets_to_target_date(self):
+        today = _hong_kong_market("26掳C")
+        other = replace(today, end_date="2026-07-11T23:59:00Z")
+        self.assertEqual(_markets_for_target_date([today, other], "2026-07-10"), [today])
 
 
 def _market():

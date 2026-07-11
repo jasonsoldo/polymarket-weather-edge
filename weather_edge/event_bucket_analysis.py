@@ -156,7 +156,7 @@ def build_event_trade_plan(
         probability_sum,
         complete,
         tuple(dict.fromkeys(completeness_reasons)),
-        tuple(selected) if decision.allowed else (),
+        tuple(selected),
         curve,
         decision,
     )

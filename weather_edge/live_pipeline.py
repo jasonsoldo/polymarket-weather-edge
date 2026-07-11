@@ -7,6 +7,7 @@ from .strategy_config import StrategyConfig
 from .trade_executor import execute_trade_plan
 from .weather_sources import fetch_weather_snapshot
 from .monitor import _city_unit
+from .settlement_rules import parse_settlement_rule
 
 
 def run_live_dry_run(
@@ -39,6 +40,7 @@ def run_live_dry_run(
         scan_all_pages=scan_all_pages,
         include_broad_weather=include_broad_weather,
     )
+    markets = _markets_for_target_date(markets, target_date)
     weather_block = weather_data_block(weather.disagreement or 0.0, weather.confidence, risk)
     if weather_block:
         return {
@@ -107,3 +109,7 @@ def _fetch_books(markets) -> dict:
         for token_id in market.token_ids:
             books[token_id] = fetch_book_summary(token_id)
     return books
+
+
+def _markets_for_target_date(markets, target_date: str):
+    return [market for market in markets if parse_settlement_rule(market).date == target_date]
