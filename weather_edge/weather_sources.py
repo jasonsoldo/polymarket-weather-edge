@@ -140,11 +140,14 @@ def _extract_cwa_forecast(payload: dict, target_date: str) -> tuple[Optional[flo
     locations_value = records.get("locations") or records.get("Locations") or []
     locations = locations_value if isinstance(locations_value, list) else [locations_value]
     for container in locations:
-        location_items = container.get("location") if isinstance(container, dict) else []
+        location_items = []
+        if isinstance(container, dict):
+            location_items = container.get("location") or container.get("Location") or []
         if isinstance(location_items, dict):
             location_items = [location_items]
         for location in location_items or []:
-            for element in location.get("weatherElement") or []:
+            elements = location.get("weatherElement") or location.get("WeatherElement") or []
+            for element in elements:
                 name = str(element.get("elementName") or "").lower()
                 if "最高" not in name and "最低" not in name and "maxt" not in name and "mint" not in name:
                     continue
