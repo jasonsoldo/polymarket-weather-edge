@@ -167,18 +167,34 @@ def _fetch_hko(rule: SettlementRule) -> SettlementSourceResult:
 
 def _hko_daily_value(data_type: str, params: dict, target_date: str) -> Optional[float]:
     payload = get_json(HKO_OPEN_DATA_API, {"dataType": data_type, **params})
+    if not payload.get("data") and "month" in params:
+        fallback = {key: value for key, value in params.items() if key != "month"}
+        payload = get_json(HKO_OPEN_DATA_API, {"dataType": data_type, **fallback})
+    fields = [str(field).strip().lower() for field in payload.get("fields") or []]
     for row in payload.get("data") or []:
         values = list(row) if isinstance(row, (list, tuple)) else []
         if not values:
             continue
-        if not _hko_date_matches(values[0], target_date):
+        if not _hko_row_matches(values, fields, target_date):
             continue
-        for value in reversed(values):
+        value_indexes = [index for index, field in enumerate(fields) if "value" in field or "數值" in field]
+        candidates = [values[index] for index in value_indexes if index < len(values)] or list(reversed(values))
+        for value in candidates:
             try:
                 return float(value)
             except (TypeError, ValueError):
                 continue
     return None
+
+
+def _hko_row_matches(values, fields: list[str], target_date: str) -> bool:
+    year_index = next((index for index, field in enumerate(fields) if "year" in field or field == "yyyy"), None)
+    month_index = next((index for index, field in enumerate(fields) if "month" in field or field == "mm"), None)
+    day_index = next((index for index, field in enumerate(fields) if "day" in field or field in {"dd", "date"}), None)
+    if year_index is not None and month_index is not None and day_index is not None:
+        year, month, day = target_date.split("-")
+        return all(index < len(values) and str(values[index]).zfill(2 if index != year_index else 4) == expected for index, expected in ((year_index, year), (month_index, month), (day_index, day)))
+    return _hko_date_matches(values[0], target_date)
 
 
 def _hko_date_matches(value, target_date: str) -> bool:

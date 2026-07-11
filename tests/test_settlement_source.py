@@ -3,7 +3,7 @@ import os
 from unittest.mock import patch
 
 from weather_edge.settlement_rules import SettlementRule
-from weather_edge.settlement_source import _hko_date_matches, fetch_settlement_observation, settlement_source_capability
+from weather_edge.settlement_source import _hko_date_matches, _hko_row_matches, fetch_settlement_observation, settlement_source_capability
 
 
 class SettlementSourceTests(unittest.TestCase):
@@ -12,6 +12,18 @@ class SettlementSourceTests(unittest.TestCase):
         self.assertTrue(_hko_date_matches("01/06", "2026-06-01"))
         self.assertTrue(_hko_date_matches("1", "2026-06-01"))
         self.assertFalse(_hko_date_matches("02", "2026-06-01"))
+
+    def test_hko_history_accepts_year_month_day_columns(self):
+        self.assertTrue(_hko_row_matches([2026, 6, 1, 32.1], ["year", "month", "day", "hko"], "2026-06-01"))
+        self.assertTrue(_hko_row_matches([2026, 6, 1, 32.1], ["年/year", "月/month", "日/day", "數值/value"], "2026-06-01"))
+        self.assertFalse(_hko_row_matches([2026, 6, 2, 32.1], ["year", "month", "day", "hko"], "2026-06-01"))
+
+    def test_hko_history_retries_without_month_when_month_query_is_empty(self):
+        empty = {"fields": ["年/year", "月/month", "日/day", "數值/value"], "data": []}
+        yearly = {"fields": ["年/year", "月/month", "日/day", "數值/value"], "data": [[2026, 6, 1, 32.1]]}
+        with patch("weather_edge.settlement_source.get_json", side_effect=[empty, yearly]):
+            from weather_edge.settlement_source import _hko_daily_value
+            self.assertEqual(_hko_daily_value("CLMMAXT", {"year": "2026", "month": "6"}, "2026-06-01"), 32.1)
 
     def test_configured_cwa_official_adapter_reads_extremes(self):
         rule = _rule("CWA", "RCSS", "2020-07-10")
