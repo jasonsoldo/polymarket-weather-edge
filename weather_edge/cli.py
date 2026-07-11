@@ -51,6 +51,12 @@ def main(argv=None) -> int:
     backfill_parser.add_argument("--resolutions", required=True)
     backfill_parser.add_argument("--output", required=True)
 
+    hko_history_parser = sub.add_parser("hko-collect-history")
+    hko_history_parser.add_argument("--start-date", required=True)
+    hko_history_parser.add_argument("--end-date", required=True)
+    hko_history_parser.add_argument("--output", default="data/validation/hko.jsonl")
+    hko_history_parser.add_argument("--interval", type=float, default=0.2)
+
     markets_parser = sub.add_parser("live-markets")
     markets_parser.add_argument("--city", default="")
     markets_parser.add_argument("--limit", type=int, default=100)
@@ -289,6 +295,13 @@ def main(argv=None) -> int:
         write_jsonl(args.output, rows)
         print(json.dumps({"input": args.input, "resolutions": args.resolutions, "output": args.output, "rows": len(rows), "backfilled": sum(bool(row.get("resolution_backfilled")) for row in rows)}, indent=2))
         return 0
+
+    if args.command == "hko-collect-history":
+        from .hko_history import collect_hko_history
+
+        result = collect_hko_history(args.start_date, args.end_date, args.output, args.interval)
+        print(json.dumps(result, indent=2))
+        return 0 if result["failed"] == 0 else 2
 
     if args.command == "live-markets":
         from .market_scanner import fetch_weather_markets, get_last_scan_stats
