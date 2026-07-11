@@ -349,7 +349,7 @@ def _hong_kong_module(snapshot):
     verified = bool(closure.get("settlement_verified"))
     state = "official_source_verified" if verified else "pending"
     blocker = "" if verified else "pending_hko_settlement_validation"
-    summary = _table(("Settlement status", "Last final date", "Final daily max", "Resolved markets", "Matches", "Shadow realized PnL", "Block reason"), [(state, closure.get("last_final_date", ""), closure.get("final_daily_max", ""), closure.get("markets_resolved", 0), closure.get("settlement_matches", 0), _number(closure.get("shadow_realized_pnl", 0)), blocker)])
+    summary = _table(("Settlement status", "Last final date", "Final daily max", "Resolved markets", "Matches", "Shadow samples", "Finalized", "Hypothetical PnL", "Block reason"), [(state, closure.get("last_final_date", ""), closure.get("final_daily_max", ""), closure.get("markets_resolved", 0), closure.get("settlement_matches", 0), closure.get("shadow_samples", 0), closure.get("shadow_finalized", 0), _number(closure.get("shadow_hypothetical_pnl", 0)), blocker)])
     return "<h2>Hong Kong Overview</h2>" + summary + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Winning buckets</h2>" + "".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket"
 
 def _table(headers, rows):

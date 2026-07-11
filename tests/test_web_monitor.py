@@ -135,7 +135,7 @@ class WebMonitorTests(unittest.TestCase):
         snapshot = {
             "mode": "all_cities", "target_date": "2026-07-12", "recommended_action": "NO_TRADE",
             "portfolio": {"cost_basis": 0, "unrealized_pnl": 0, "stale_positions": 0},
-            "hong_kong_closure": {"settlement_verified": True, "last_final_date": "2026-07-10", "final_daily_max": 31.0, "markets_resolved": 2, "settlement_matches": 2, "winning_buckets": ["Will the highest temperature in Hong Kong be 31C?"], "shadow_realized_pnl": 0.6},
+            "hong_kong_closure": {"settlement_verified": True, "last_final_date": "2026-07-10", "final_daily_max": 31.0, "markets_resolved": 2, "settlement_matches": 2, "winning_buckets": ["Will the highest temperature in Hong Kong be 31C?"], "shadow_samples": 1, "shadow_finalized": 1, "shadow_hypothetical_pnl": 0.6, "shadow_realized_pnl": 0.6},
             "cities": [{"city": "Hong Kong", "markets_found": 2, "weather": {"confidence": 0.85, "forecasts": [{"source": "hko_forecast", "max_temp": 32.0, "unit": "C", "updated_at": "2026-07-11"}]}, "markets": []}],
         }
         overview = render_dashboard(snapshot, [])

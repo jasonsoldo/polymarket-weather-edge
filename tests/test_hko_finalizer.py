@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from weather_edge.accounting import realized_pnl
 from weather_edge.hko_finalizer import finalize_hko_day, finalize_hko_recent, hko_closure_status
+from weather_edge.history_store import save_monitor_snapshot
 from weather_edge.order_store import StoredOrder, save_order
 from weather_edge.position_manager import Position, load_positions, upsert_position
 from weather_edge.settlement_source import SettlementSourceResult
@@ -31,6 +32,14 @@ class HkoFinalizerTests(unittest.TestCase):
             upsert_position(positions_db, Position("market-31", "yes-token", "31°C", 1.0, 0.4))
             save_order(orders_db, StoredOrder("dry-1", "market-31", "yes-token", "31°C", "BUY", 0.4, 1.0, "dry_run_filled", {}))
 
+            save_monitor_snapshot(history_db, {
+                "observed_at": "2026-07-10T00:00:00Z", "city": "Hong Kong", "target_date": "2026-07-10", "weather": {"confidence": 0.85, "disagreement": 0.5},
+                "markets": [{"event_id": "event-1", "event_slug": "hk-high", "markets": [{"market_id": "market-31", "question": market["question"]}], "event_bucket_plan": {
+                    "settlement_rule": {"market_type": "highest_temperature"}, "decision": {"recommended_action": "block_new_position", "reasons": ["shadow_only"]},
+                    "orders": [], "curve": {"best_case_pnl": 0.6, "worst_case_pnl": -0.4},
+                    "simulation_candidate": {"orders": [{"market_id": "market-31", "token_id": "yes-token", "bucket": "31C", "price": 0.4, "size": 1.0}], "curve": {"best_case_pnl": 0.6, "worst_case_pnl": -0.4}},
+                }}],
+            })
             with patch("weather_edge.hko_finalizer.fetch_settlement_observation", return_value=observation), patch(
                 "weather_edge.hko_finalizer._closed_hko_markets", return_value=[{"event": {}, "market": market}]
             ):
@@ -46,6 +55,8 @@ class HkoFinalizerTests(unittest.TestCase):
             self.assertTrue(closure["settlement_verified"])
             self.assertEqual(closure["final_daily_max"], 31.0)
             self.assertAlmostEqual(closure["shadow_realized_pnl"], 0.6)
+            self.assertEqual((closure["shadow_samples"], closure["shadow_finalized"]), (1, 1))
+            self.assertAlmostEqual(closure["shadow_hypothetical_pnl"], 0.6)
             with closing(sqlite3.connect(history_db)) as conn:
                 row = conn.execute("SELECT expected_outcome, resolved_outcome, settlement_match FROM hko_market_resolutions").fetchone()
             self.assertEqual(row, ("Yes", "Yes", 1))

@@ -22,3 +22,16 @@ class HistoryStoreTests(unittest.TestCase):
             report = calibration_summary(path)
         self.assertEqual((counts["forecast_observations"], counts["market_observations"], counts["bucket_observations"], counts["settlement_observations"]), (1, 1, 1, 1))
         self.assertEqual(report[0]["samples"], 1)
+
+    def test_records_hong_kong_high_temperature_shadow_decision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "history.sqlite")
+            save_monitor_snapshot(path, {
+                "observed_at": "2026-07-10T00:00:00Z", "city": "Hong Kong", "target_date": "2026-07-10", "weather": {"confidence": 0.85, "disagreement": 0.5},
+                "markets": [{"event_id": "e", "event_slug": "hk-high", "markets": [{"market_id": "m", "question": "Will the highest temperature in Hong Kong be 31C?"}], "event_bucket_plan": {
+                    "settlement_rule": {"market_type": "highest_temperature"}, "decision": {"recommended_action": "block_new_position", "reasons": ["shadow_only"]},
+                    "simulation_candidate": {"orders": [{"market_id": "m", "price": 0.4, "size": 2}], "curve": {"best_case_pnl": 1.2, "worst_case_pnl": -0.8}},
+                }}],
+            })
+            counts = history_summary(path)
+        self.assertEqual(counts["shadow_decisions"], 1)

@@ -33,6 +33,15 @@ CREATE TABLE IF NOT EXISTS settlement_observations (
     source TEXT NOT NULL, station TEXT, max_temp REAL, min_temp REAL, unit TEXT,
     status TEXT NOT NULL, reason TEXT, raw_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS shadow_decisions (
+    decision_id TEXT PRIMARY KEY, decision_time TEXT NOT NULL,
+    event_id TEXT NOT NULL, event_slug TEXT NOT NULL, target_date TEXT NOT NULL,
+    question TEXT NOT NULL, weather_confidence REAL, data_disagreement REAL,
+    planned_size REAL NOT NULL, planned_cost REAL NOT NULL,
+    expected_best_pnl REAL, maximum_loss REAL, recommended_action TEXT NOT NULL,
+    block_reason TEXT, payload_json TEXT NOT NULL,
+    final_market_result TEXT, hypothetical_realized_pnl REAL, finalized_at TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_monitor_snapshots_target ON monitor_snapshots(target_date, observed_at);
 CREATE INDEX IF NOT EXISTS idx_forecast_lookup ON forecast_observations(city, target_date, source, observed_at);
 CREATE INDEX IF NOT EXISTS idx_market_lookup ON market_observations(event_id, market_id, observed_at);
@@ -65,7 +74,7 @@ def save_settlement_observation(path: str, city: str, target_date: str, observat
 def history_summary(path: str) -> dict:
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA)
-        names = ("monitor_snapshots", "forecast_observations", "market_observations", "bucket_observations", "settlement_observations")
+        names = ("monitor_snapshots", "forecast_observations", "market_observations", "bucket_observations", "settlement_observations", "shadow_decisions")
         return {name: int(conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]) for name in names}
 
 
@@ -123,10 +132,30 @@ def _save_city_snapshot(conn, snapshot: dict, fallback_observed_at: str) -> None
             )
         if event.get("settlement_observation"):
             _insert_settlement(conn, observed_at, city, target_date, event["settlement_observation"])
+        if city == "Hong Kong" and (plan.get("settlement_rule") or {}).get("market_type") == "highest_temperature":
+            _insert_shadow_decision(conn, observed_at, target_date, event, plan, snapshot.get("weather") or {})
 
 
 def _insert_settlement(conn, recorded_at: str, city: str, target_date: str, observation: dict) -> None:
     conn.execute(
         "INSERT INTO settlement_observations VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (recorded_at, city, target_date, observation.get("source", observation.get("settlement_source", "")), observation.get("station", observation.get("target_station_or_data_source", "")), observation.get("max_temp", observation.get("daily_high")), observation.get("min_temp", observation.get("daily_low")), observation.get("unit", ""), observation.get("status", ""), observation.get("reason", ""), json.dumps(observation, sort_keys=True)),
+    )
+
+
+def _insert_shadow_decision(conn, observed_at: str, target_date: str, event: dict, plan: dict, weather: dict) -> None:
+    decision = plan.get("decision") or {}
+    candidate = plan.get("simulation_candidate") or {}
+    orders = candidate.get("orders") or plan.get("orders") or []
+    curve = candidate.get("curve") or plan.get("curve") or {}
+    markets = event.get("markets") or []
+    event_id = str(event.get("event_id") or plan.get("event_id") or event.get("event_slug") or "")
+    decision_id = f"{observed_at}:{event_id}"
+    planned_size = sum(float(order.get("size") or 0) for order in orders)
+    planned_cost = sum(float(order.get("size") or 0) * float(order.get("price") or 0) for order in orders)
+    reasons = decision.get("reasons") or []
+    payload = {"event": event, "plan": plan, "weather": weather}
+    conn.execute(
+        "INSERT OR IGNORE INTO shadow_decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)",
+        (decision_id, observed_at, event_id, str(event.get("event_slug") or plan.get("event_slug") or ""), target_date, str((markets[0] if markets else {}).get("question") or ""), weather.get("confidence"), weather.get("disagreement"), planned_size, planned_cost, curve.get("best_case_pnl"), abs(float(curve.get("worst_case_pnl") or 0)), str(decision.get("recommended_action") or "NO_TRADE"), "; ".join(str(reason) for reason in reasons), json.dumps(payload, sort_keys=True)),
     )

@@ -65,6 +65,7 @@ def finalize_hko_day(target_date: str, history_db: str, positions_db: str, order
         resolved_count = matched_count = settled_count = 0
         total_pnl = 0.0
         winning_buckets = []
+        resolved_at = datetime.now(timezone.utc).isoformat()
         for record in records:
             market = record["market"]
             market_id = str(market.get("id") or market.get("market_id") or "")
@@ -112,6 +113,7 @@ def finalize_hko_day(target_date: str, history_db: str, positions_db: str, order
                 reduce_position(positions_db, position.market_id, position.token_id, position.shares)
                 settled_count += 1
                 total_pnl += pnl
+        _finalize_shadow_decisions(history, target_date, records, resolved_at)
         history.commit()
         orders.commit()
     return {
@@ -157,8 +159,35 @@ def _is_dry_run_position(conn: sqlite3.Connection, market_id: str, token_id: str
     return bool(row)
 
 
+def _finalize_shadow_decisions(conn: sqlite3.Connection, target_date: str, records: list[dict], finalized_at: str) -> None:
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='shadow_decisions'").fetchone():
+        return
+    resolutions = {str(item["market"].get("id") or ""): _resolved_outcome(item["market"]) for item in records}
+    rows = conn.execute("SELECT decision_id, payload_json FROM shadow_decisions WHERE target_date = ? AND finalized_at IS NULL", (target_date,)).fetchall()
+    for decision_id, payload_json in rows:
+        payload = json.loads(payload_json)
+        plan = payload.get("plan") or {}
+        candidate = plan.get("simulation_candidate") or {}
+        orders = candidate.get("orders") or plan.get("orders") or []
+        cost = payout = 0.0
+        used = {}
+        for order in orders:
+            market_id = str(order.get("market_id") or "")
+            resolved = resolutions.get(market_id)
+            if not resolved:
+                continue
+            size = float(order.get("size") or 0)
+            cost += size * float(order.get("price") or 0)
+            payout += size if resolved == "Yes" else 0.0
+            used[market_id] = resolved
+        conn.execute(
+            "UPDATE shadow_decisions SET final_market_result = ?, hypothetical_realized_pnl = ?, finalized_at = ? WHERE decision_id = ?",
+            (json.dumps(used, sort_keys=True), payout - cost, finalized_at, decision_id),
+        )
+
+
 def hko_closure_status(history_db: str, orders_db: str) -> dict:
-    status = {"settlement_verified": False, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_realized_pnl": 0.0, "last_finalized_at": ""}
+    status = {"settlement_verified": False, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_samples": 0, "shadow_finalized": 0, "shadow_hypothetical_pnl": 0.0, "shadow_realized_pnl": 0.0, "last_finalized_at": ""}
     try:
         with closing(sqlite3.connect(history_db)) as conn:
             row = conn.execute(
@@ -175,6 +204,9 @@ def hko_closure_status(history_db: str, orders_db: str) -> dict:
                 status["settlement_matches"] = sum(int(item[2]) for item in rows)
                 status["winning_buckets"] = [item[0] for item in rows if item[1] == "Yes"]
                 status["settlement_verified"] = bool(rows) and status["settlement_matches"] == len(rows)
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='shadow_decisions'").fetchone():
+                shadow = conn.execute("SELECT COUNT(*), SUM(CASE WHEN finalized_at IS NOT NULL THEN 1 ELSE 0 END), COALESCE(SUM(hypothetical_realized_pnl), 0) FROM shadow_decisions").fetchone()
+                status.update({"shadow_samples": int(shadow[0]), "shadow_finalized": int(shadow[1] or 0), "shadow_hypothetical_pnl": float(shadow[2] or 0)})
     except sqlite3.Error:
         pass
     try:
