@@ -59,18 +59,93 @@ def _render_terminal_dashboard(snapshot: dict, history: list[dict]) -> str:
     chart = _pnl_chart(snapshot)
     blocker_html = "".join(f"<div class='risk-row'><span class='risk-dot'></span><span>{_esc(reason)}</span></div>" for reason in blockers[:8]) or "<div class='quiet'>No active blockers</div>"
     return f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='refresh' content='30'><title>WeatherEdge Terminal</title>
-<style>{_terminal_css()}</style></head><body><div class='terminal'>
+<style>{_terminal_css()}{_terminal_extra_css()}</style></head><body><div class='terminal'>
 <aside class='rail'><div class='terminal-logo'>W<span>E</span><small>WEATHER EDGE</small></div><nav><a class='active' href='/'>⌂<span>Overview</span></a><a href='/markets'>◈<span>Markets</span></a><a href='/cities'>◎<span>Cities</span></a><a href='/weather-sources'>◒<span>Weather</span></a><a href='/settlement-sources'>◌<span>Settlement</span></a><a href='/risk'>!</a><a href='/positions'>▣</a></nav><div class='rail-foot'>LIVE<br><span>30s refresh</span></div></aside>
 <main><header class='terminal-head'><div><div class='overline'>WEATHEREDGE / ALL CITIES CONTROL ROOM</div><h1>WeatherEdge All Cities Monitor</h1><p>Real market intelligence · risk-gated simulation · target {_esc(snapshot.get('target_date', ''))}</p></div><div class='head-status'><span class='live-dot'></span> LIVE MONITOR <small>{_esc(snapshot.get('observed_at', ''))}</small></div></header>
+<section class='profile-grid'><div class='profile-card'><div class='profile-top'><span class='profile-dot'></span><span>WEATHEREDGE · LIVE WEATHER EDGE</span><span class='profile-chip'>READ ONLY</span></div><div class='profile-number'>{_esc(action)}</div><div class='profile-rule'></div><div class='profile-stats'><div><small>MARKETS</small><b>{_esc(snapshot.get('temperature_markets_found', snapshot.get('markets_found', 0)))}</b></div><div><small>CITIES</small><b>{_esc(snapshot.get('cities_discovered', 0))}</b></div><div><small>CONFIDENCE</small><b>{_esc(_top_confidence(snapshot))}</b></div><div><small>RISK</small><b>{_esc('BLOCKED' if action == 'NO_TRADE' else 'WATCH')}</b></div></div><div class='profile-foot'>updated {_esc(snapshot.get('observed_at', ''))} · official settlement gate active</div></div><div class='top-win panel'><div class='panel-head'><div><small class='overline'>TOP EVENT · WEATHER BUCKET</small><h2>{_esc(_top_event_name(snapshot))}</h2></div><span class='mini-label'>1 / {_esc(max(1, len(_monitor_rows(snapshot))))}</span></div>{_pnl_chart(snapshot)}<div class='win-meta'><span>ENTRY <b>{_esc(_number(_top_event_cost(snapshot)))}</b></span><span>BEST PNL <b class='positive'>+{_esc(_number(_top_event_best(snapshot)))}</b></span></div></div></section>
+<section class='signal-panel panel'><div class='panel-head'><div><small class='overline'>MARKET RELATIONSHIP GRAPH</small><h2>City / source / bucket signal map</h2></div><span class='mini-label'>NODES {_esc(len(_monitor_rows(snapshot)))} · RISK GATED</span></div><div class='signal-layout'><div class='signal-legend'><span><i class='red-dot'></i>blocked signal</span><span><i class='green-dot'></i>watch signal</span><span><i class='black-dot'></i>settlement hub</span><b>{_esc(len(snapshot.get('cities', [])))} CITIES</b><small>{_esc(snapshot.get('markets_scanned', 0))} markets scanned<br>{_esc(snapshot.get('excluded_markets', 0))} excluded by filter</small></div>{_signal_graph(snapshot)}<div class='signal-readout'><small>P(TRADE)</small><b>0.00</b><small>P(NO TRADE)</small><b class='negative'>1.00</b><div class='edge-meter'></div><small>CONFIDENCE</small><b>{_esc(_top_confidence(snapshot))}</b></div></div></section>
+<section class='pattern-panel panel'><div class='panel-head'><div><small class='overline'>PATTERN ENGINE · BUCKET CURVE</small><h2>Forecast vs market price</h2></div><span class='mini-label'>PROBABILITY · EDGE · EXECUTION</span></div><div class='pattern-layout'><div class='pattern-chart'>{_price_chart(snapshot)}</div><div class='pattern-copy'><span class='terminal-badge { _esc(action) }'>{_esc(action)}</span><b>{_esc(_top_event_reason(snapshot))}</b><small>Every bucket is checked for coverage, spread, liquidity, settlement source and PnL if wins.</small></div></div></section>
 <section class='status-bar'><div><small>SYSTEM ACTION</small><strong class='{_state_class(action)}'>{_esc(action)}</strong><span>{_esc(blockers[0] if blockers else 'No active blockers')}</span></div><div class='scan-state'><small>DISCOVERY</small><b>{_esc(snapshot.get('scan_completed', False))}</b><span>{_esc(snapshot.get('pages_scanned', 0))} pages · {_esc(snapshot.get('markets_scanned', 0))} scanned</span></div></section>
 <section class='metric-grid'>{_terminal_metric('CITIES', snapshot.get('cities_discovered', snapshot.get('cities_monitored', 0)), 'registered ' + str(snapshot.get('registered_cities', 0)))}{_terminal_metric('TEMP MARKETS', snapshot.get('temperature_markets_found', snapshot.get('markets_found', 0)), 'strict discovery')}{_terminal_metric('COST BASIS', _number(portfolio.get('cost_basis', 0)), 'capital deployed')}{_terminal_metric('MARKED VALUE', _number(portfolio.get('market_value', 0)), 'bid marked')}{_terminal_metric('UNREALIZED PNL', _number(portfolio.get('unrealized_pnl', 0)), 'live estimate')}{_terminal_metric('STALE POSITIONS', portfolio.get('stale_positions', 0), 'must be zero')}</section>
 <section class='main-grid'><section class='panel market-panel'><div class='panel-head'><div><small class='overline'>LIVE MARKET TAPE</small><h2>Real Weather Markets</h2></div><a href='/markets'>VIEW ALL →</a></div><div class='table-wrap'><table><thead><tr><th>City / station</th><th>Market / settlement</th><th>Model / weather</th><th>Investment</th><th>Potential</th><th>Max loss</th><th>Action</th></tr></thead><tbody>{''.join(market_rows) or "<tr><td colspan='7' class='quiet'>No strict city temperature markets found.</td></tr>"}</tbody></table></div></section><aside class='side-stack'><section class='panel'><div class='panel-head'><div><small class='overline'>RISK ENGINE</small><h2>Blockers</h2></div><a href='/risk'>DETAILS →</a></div>{blocker_html}</section><section class='panel chart-panel'><div class='panel-head'><div><small class='overline'>P&L CURVE</small><h2>Current event shape</h2></div><span class='mini-label'>SIMULATION</span></div>{chart}</section></aside></section>
 <section class='panel city-panel'><div class='panel-head'><div><small class='overline'>WEATHER NETWORK</small><h2>City pulse</h2></div><a href='/cities'>VIEW ALL →</a></div><div class='city-list'>{''.join(city_rows) or "<div class='quiet'>No cities discovered.</div>"}</div></section>
+<section class='pulse-panel panel'><div class='panel-head'><div><small class='overline'>ALL CITIES PULSE</small><h2>Real weather market activity</h2></div><span class='mini-label'>AUTO-REFRESH 30S</span></div>{_pulse_chart(snapshot)}</section>
 </main></div></body></html>"""
 
 
 def _terminal_metric(label, value, note):
     return f"<div class='metric-card'><small>{_esc(label)}</small><b>{_esc(value)}</b><span>{_esc(note)}</span></div>"
+
+
+def _top_confidence(snapshot):
+    values = []
+    for city in snapshot.get("cities", [snapshot]):
+        value = (city.get("weather") or {}).get("confidence")
+        if value is not None:
+            values.append(float(value))
+    return f"{max(values) * 100:.0f}%" if values else "—"
+
+
+def _top_event_name(snapshot):
+    rows = _monitor_rows(snapshot)
+    return rows[0]["market"][:48] if rows else "No active temperature event"
+
+
+def _top_event_cost(snapshot):
+    rows = _monitor_rows(snapshot)
+    return float(rows[0]["investment"]) if rows else 0.0
+
+
+def _top_event_best(snapshot):
+    rows = _monitor_rows(snapshot)
+    return float(rows[0]["profit"]) if rows else 0.0
+
+
+def _top_event_reason(snapshot):
+    rows = _monitor_rows(snapshot)
+    return rows[0]["block_reason"] if rows and rows[0]["block_reason"] else "Waiting for a risk-approved candidate"
+
+
+def _signal_graph(snapshot):
+    rows = _monitor_rows(snapshot)[:18]
+    nodes = []
+    lines = []
+    cx, cy = 360, 115
+    for index, row in enumerate(rows):
+        angle = (index / max(1, len(rows))) * 6.28
+        x = cx + 245 * __import__("math").cos(angle)
+        y = cy + 82 * __import__("math").sin(angle)
+        color = "#c53f4b" if "block" in str(row["action"]).lower() or "no_trade" in str(row["action"]).lower() else "#07865c"
+        lines.append(f"<line x1='{cx}' y1='{cy}' x2='{x:.0f}' y2='{y:.0f}' stroke='#d8d5cc' stroke-width='1'/>")
+        nodes.append(f"<circle cx='{x:.0f}' cy='{y:.0f}' r='7' fill='{color}'/><text x='{x:.0f}' y='{y + 18:.0f}' text-anchor='middle' font-size='8' fill='#77818d'>{_esc(str(row['city'])[:12])}</text>")
+    return f"<svg class='signal-svg' viewBox='0 0 720 230' preserveAspectRatio='xMidYMid meet'>{''.join(lines)}<circle cx='{cx}' cy='{cy}' r='25' fill='#172027'/><circle cx='{cx}' cy='{cy}' r='15' fill='#202d35'/><text x='{cx}' y='{cy + 4}' text-anchor='middle' font-size='9' fill='#fff'>HUB</text>{''.join(nodes)}</svg>"
+
+
+def _price_chart(snapshot):
+    values = []
+    for row in _monitor_rows(snapshot):
+        for city in snapshot.get("cities", [snapshot]):
+            for event in city.get("markets", []):
+                for item in ((event.get("event_bucket_plan") or {}).get("curve") or {}).get("rows", []):
+                    if item.get("bucket") and item.get("price") is not None:
+                        values.append(float(item.get("price", 0)))
+    if not values:
+        values = [0.2, 0.24, 0.18, 0.16, 0.12, 0.08]
+    points = " ".join(f"{index * 100 / max(1, len(values) - 1):.1f},{78 - value * 58:.1f}" for index, value in enumerate(values[:32]))
+    bars = []
+    for index, value in enumerate(values[:32]):
+        x = index * 100 / len(values)
+        bars.append(f"<rect x='{x:.1f}' y='{88 - value * 65:.1f}' width='{max(1.2, 90 / len(values)):.1f}' height='{value * 65:.1f}' fill='#d9e8df'/>")
+        if index % 4 == 0:
+            bars.append(f"<circle cx='{x:.1f}' cy='{78 - value * 58:.1f}' r='2.2' fill='#172027'/>")
+    return f"<svg class='price-svg' viewBox='0 0 100 100' preserveAspectRatio='none'><line x1='0' y1='78' x2='100' y2='78' stroke='#ddd9d0'/>{''.join(bars)}<polyline points='{points}' fill='none' stroke='#172027' stroke-width='1.2'/></svg><div class='chart-labels'><span>MARKET PRICE</span><span>MODEL PROBABILITY</span><span>BUCKETS</span></div>"
+
+
+def _pulse_chart(snapshot):
+    values = [float(city.get("markets_found", 0)) for city in snapshot.get("cities", [])]
+    values = values or [0]
+    bars = "".join(f"<rect x='{index * 100 / len(values):.1f}' y='{70 - min(55, value * 8):.1f}' width='{max(2, 80 / len(values)):.1f}' height='{min(55, value * 8):.1f}' fill='{('#cf5360' if index % 3 == 0 else '#53a986')}'/>" for index, value in enumerate(values))
+    return f"<svg class='pulse-svg' viewBox='0 0 100 80' preserveAspectRatio='none'><line x1='0' y1='70' x2='100' y2='70' stroke='#ddd9d0'/>{bars}</svg>"
 
 
 def _pnl_chart(snapshot):
@@ -92,6 +167,10 @@ def _pnl_chart(snapshot):
 
 def _terminal_css():
     return """:root{--bg:#f3f5f7;--panel:#fff;--ink:#18212b;--muted:#77818d;--line:#e1e6ea;--dark:#172027;--green:#07865c;--red:#c53f4b;--amber:#b9781f}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:13px Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.terminal{display:flex;min-height:100vh}.rail{width:76px;background:var(--dark);color:#98a5ad;display:flex;flex-direction:column;align-items:center;padding:22px 10px}.terminal-logo{color:#fff;font-weight:900;font-size:24px;letter-spacing:-2px;text-align:center}.terminal-logo span{color:#55c99b}.terminal-logo small{display:block;font-size:7px;letter-spacing:1px;color:#7f8c94;margin-top:6px}.rail nav{width:100%;display:flex;flex-direction:column;gap:8px;margin-top:42px}.rail nav a{height:42px;color:#83919a;text-decoration:none;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:19px;gap:11px}.rail nav a span{display:none}.rail nav a.active,.rail nav a:hover{background:#26343c;color:#fff}.rail-foot{margin-top:auto;text-align:center;font-size:9px;letter-spacing:1px;color:#55c99b;line-height:1.8}.rail-foot span{color:#697880;letter-spacing:0}main{width:100%;max-width:1800px;padding:30px 36px}.terminal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px}.overline{font-size:9px;font-weight:800;letter-spacing:1.25px;color:#8b949e}.terminal-head h1{font-size:28px;margin:7px 0 3px;letter-spacing:-.8px}.terminal-head p{color:var(--muted);margin:0}.head-status{color:var(--green);font-size:10px;font-weight:800;letter-spacing:.8px}.head-status small{display:block;text-align:right;color:var(--muted);font-weight:500;letter-spacing:0;margin-top:7px}.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#34b781;margin-right:7px;box-shadow:0 0 0 3px #d9f6eb}.status-bar,.panel,.metric-card{background:var(--panel);border:1px solid var(--line);border-radius:9px}.status-bar{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;margin-bottom:13px}.status-bar small,.metric-card small{display:block;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:1px}.status-bar strong{display:block;font-size:27px;letter-spacing:-.6px;margin:4px 0}.status-bar span,.scan-state span{display:block;color:var(--muted);font-size:11px}.scan-state{text-align:right;border-left:1px solid var(--line);padding-left:28px}.scan-state b{display:block;font-size:16px;margin:4px 0}.metric-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:13px}.metric-card{padding:14px 15px}.metric-card b{display:block;font-size:22px;margin:9px 0 4px;letter-spacing:-.5px}.metric-card span{font-size:10px;color:var(--muted)}.main-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,.65fr);gap:13px}.side-stack{display:flex;flex-direction:column;gap:13px}.panel{padding:18px;min-width:0}.panel-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}.panel-head h2{font-size:15px;margin:6px 0 0}.panel-head a{font-size:9px;color:var(--green);font-weight:800;text-decoration:none;letter-spacing:.6px}.mini-label{font-size:9px;color:var(--amber);font-weight:800}.table-wrap{overflow:auto}.table-wrap table{width:100%;min-width:840px;border-collapse:collapse}.table-wrap th{font-size:9px;color:#8a949e;text-align:left;font-weight:800;letter-spacing:.75px;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}.table-wrap td{padding:12px 8px;border-bottom:1px solid #edf0f2;vertical-align:top;font-size:11px}.table-wrap td small,.city-strip small{display:block;color:var(--muted);font-size:9px;line-height:1.55;margin-top:4px}.market-cell{max-width:290px}.market-cell b{font-weight:650}.money{font-variant-numeric:tabular-nums}.positive{color:var(--green);font-weight:800}.negative{color:var(--red);font-weight:800}.terminal-badge{display:inline-block;border-radius:999px;padding:4px 7px;font-size:8px;font-weight:800;letter-spacing:.25px;background:#eef1f3;color:#66717a;white-space:nowrap}.terminal-badge.NO_TRADE,.terminal-badge.block_new_position{color:var(--red);background:#fff0f1}.terminal-badge.WATCH{color:var(--amber);background:#fff6e5}.terminal-badge.success{color:var(--green);background:#eaf8f2}.risk-row{display:flex;gap:9px;align-items:flex-start;padding:11px 0;border-bottom:1px solid #edf0f2;color:#596570;font-size:11px;line-height:1.45}.risk-row:last-child{border:0}.risk-dot{width:6px;height:6px;border-radius:50%;background:var(--red);margin-top:5px;flex:none}.quiet,.chart-empty{color:var(--muted);font-size:11px;padding:20px 0}.chart-panel{min-height:160px}.pnl-svg{width:100%;height:112px;display:block;background:linear-gradient(to bottom,#f8fbf9 1px,transparent 1px);background-size:100% 28px;border-bottom:1px solid var(--line)}.chart-labels{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:7px}.city-panel{margin-top:13px}.city-list{display:grid;grid-template-columns:repeat(3,1fr);gap:1px 20px}.city-strip{display:grid;grid-template-columns:1.4fr .9fr .8fr auto;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid #edf0f2}.city-strip b{font-size:12px}.temp{font-weight:700;font-variant-numeric:tabular-nums}.confidence{font-size:10px;color:#56616b}.confidence small{font-size:9px}.temp small{display:inline;color:var(--muted);margin-left:3px}.city-strip .terminal-badge{justify-self:end}@media(max-width:1150px){main{padding:24px}.metric-grid{grid-template-columns:repeat(3,1fr)}.main-grid{grid-template-columns:1fr}.city-list{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.rail{width:58px}.terminal-logo small{display:none}main{padding:18px 12px}.terminal-head{display:block}.head-status{margin-top:18px}.head-status small{text-align:left}.status-bar{display:block}.scan-state{text-align:left;border:0;border-top:1px solid var(--line);margin-top:14px;padding:14px 0 0}.metric-grid{grid-template-columns:repeat(2,1fr)}.metric-card b{font-size:18px}.city-list{grid-template-columns:1fr}.city-strip{grid-template-columns:1fr 1fr}.city-strip .terminal-badge{justify-self:start}}"""
+
+
+def _terminal_extra_css():
+    return ".profile-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:13px;margin-bottom:13px}.profile-card{background:#fff;border:1px solid #172027;padding:18px 22px;min-height:190px}.profile-top{display:flex;gap:8px;align-items:center;color:#66717a;font:800 9px ui-monospace,monospace;letter-spacing:.7px}.profile-dot{width:7px;height:7px;border-radius:50%;background:#c53f4b}.profile-chip{margin-left:auto;border:1px solid #d7d2c9;padding:4px 7px}.profile-number{font:800 40px/1.1 ui-monospace,monospace;letter-spacing:2px;margin:28px 0 10px}.profile-rule{border-top:1px solid #ddd9d0}.profile-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:13px}.profile-stats small{display:block;color:#8a949e;font-size:8px}.profile-stats b{display:block;font:800 17px ui-monospace,monospace;margin-top:5px}.profile-foot{color:#8a949e;font-size:9px;margin-top:16px}.top-win{min-height:190px}.win-meta{display:flex;gap:35px;color:#8a949e;font-size:9px;margin-top:8px}.win-meta b{display:block;color:#172027;font:800 15px ui-monospace,monospace;margin-top:4px}.signal-panel{background:#fffefa}.signal-layout{display:grid;grid-template-columns:130px 1fr 110px;align-items:center;min-height:230px}.signal-legend{display:flex;flex-direction:column;gap:8px;color:#77818d;font-size:9px}.signal-legend b{color:#172027;font:800 11px ui-monospace,monospace;margin-top:8px}.signal-legend small{line-height:1.6}.red-dot,.green-dot,.black-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;background:#c53f4b}.green-dot{background:#07865c}.black-dot{background:#172027}.signal-svg{width:100%;height:230px}.signal-readout{border-left:1px solid #ddd9d0;padding-left:17px}.signal-readout small{display:block;color:#8a949e;font-size:8px;margin-top:8px}.signal-readout b{display:block;font:800 18px ui-monospace,monospace;margin-top:4px}.edge-meter{height:6px;background:linear-gradient(90deg,#c53f4b 20%,#ddd9d0 20%,#ddd9d0 100%);margin:14px 0}.pattern-panel{margin-top:13px}.pattern-layout{display:grid;grid-template-columns:1fr 220px;gap:20px;align-items:center}.pattern-chart{min-height:140px}.price-svg{width:100%;height:145px;background:repeating-linear-gradient(0deg,transparent 0 28px,#e9e5dc 29px);border-bottom:1px solid #ddd9d0}.pattern-copy{border-left:1px solid #ddd9d0;padding-left:18px}.pattern-copy b{display:block;font-size:13px;margin:13px 0;line-height:1.4}.pattern-copy small{display:block;color:#77818d;font-size:10px;line-height:1.55}.pulse-panel{margin-top:13px}.pulse-svg{width:100%;height:80px;background:repeating-linear-gradient(0deg,transparent 0 19px,#ebe8e1 20px)}@media(max-width:850px){.profile-grid,.signal-layout,.pattern-layout{grid-template-columns:1fr}.signal-readout,.pattern-copy{border:0;border-top:1px solid #ddd9d0;padding:14px 0;margin-top:10px}.signal-svg{height:200px}.profile-stats{grid-template-columns:repeat(2,1fr)}}"
 
 def _render_simple_overview_legacy(snapshot: dict, history: list[dict], title: str) -> str:
     action = snapshot.get("recommended_action", "UNKNOWN")
