@@ -79,6 +79,8 @@ def load_jsonl(path: str) -> list[dict]:
 
 
 def _comparable(row: dict) -> bool:
+    if row.get("settlement_comparable"):
+        return row.get("api_high") is not None and row.get("api_low") is not None
     return (
         row.get("api_high") is not None
         and row.get("page_high") is not None
@@ -88,6 +90,8 @@ def _comparable(row: dict) -> bool:
 
 
 def _difference(row: dict) -> float:
+    if row.get("settlement_comparable"):
+        return 0.0 if row.get("settlement_match") else 2.0
     differences = [abs(float(row["api_high"]) - float(row["page_high"]))]
     if row.get("api_low") is not None and row.get("page_low") is not None:
         differences.append(abs(float(row["api_low"]) - float(row["page_low"])))

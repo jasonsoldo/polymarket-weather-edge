@@ -56,6 +56,22 @@ def main(argv=None) -> int:
     hko_history_parser.add_argument("--end-date", required=True)
     hko_history_parser.add_argument("--output", default="data/validation/hko.jsonl")
     hko_history_parser.add_argument("--interval", type=float, default=0.2)
+    hko_history_parser.add_argument("--history-db", default="")
+
+    hko_import_parser = sub.add_parser("hko-import-history")
+    hko_import_parser.add_argument("--input", required=True)
+    hko_import_parser.add_argument("--history-db", default="data/market_history.sqlite")
+
+    hko_backfill_parser = sub.add_parser("hko-backfill-polymarket")
+    hko_backfill_parser.add_argument("--input", required=True)
+    hko_backfill_parser.add_argument("--output", default="data/validation/hko_polymarket.jsonl")
+    hko_backfill_parser.add_argument("--pages", type=int, default=3)
+
+    history_parser = sub.add_parser("history-summary")
+    history_parser.add_argument("--db", default="data/market_history.sqlite")
+
+    calibration_parser = sub.add_parser("calibration-summary")
+    calibration_parser.add_argument("--db", default="data/market_history.sqlite")
 
     markets_parser = sub.add_parser("live-markets")
     markets_parser.add_argument("--city", default="")
@@ -299,9 +315,33 @@ def main(argv=None) -> int:
     if args.command == "hko-collect-history":
         from .hko_history import collect_hko_history
 
-        result = collect_hko_history(args.start_date, args.end_date, args.output, args.interval)
+        result = collect_hko_history(args.start_date, args.end_date, args.output, args.interval, args.history_db)
         print(json.dumps(result, indent=2))
         return 0 if result["failed"] == 0 else 2
+
+    if args.command == "hko-import-history":
+        from .hko_history import import_hko_history
+
+        print(json.dumps(import_hko_history(args.input, args.history_db), indent=2))
+        return 0
+
+    if args.command == "hko-backfill-polymarket":
+        from .hko_polymarket_backfill import backfill_hko_polymarket
+
+        print(json.dumps(backfill_hko_polymarket(args.input, args.output, args.pages), indent=2))
+        return 0
+
+    if args.command == "history-summary":
+        from .history_store import history_summary
+
+        print(json.dumps(history_summary(args.db), indent=2))
+        return 0
+
+    if args.command == "calibration-summary":
+        from .history_store import calibration_summary
+
+        print(json.dumps({"rows": calibration_summary(args.db)}, indent=2))
+        return 0
 
     if args.command == "live-markets":
         from .market_scanner import fetch_weather_markets, get_last_scan_stats
