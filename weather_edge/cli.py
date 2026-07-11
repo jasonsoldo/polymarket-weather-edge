@@ -170,6 +170,7 @@ def main(argv=None) -> int:
     dry_run_parser.add_argument("--max-pages", type=int, default=20)
     dry_run_parser.add_argument("--scan-all-pages", action="store_true")
     dry_run_parser.add_argument("--include-broad-weather", action="store_true")
+    dry_run_parser.add_argument("--full", action="store_true", help="print the complete raw simulation payload")
 
     portfolio_parser = sub.add_parser("portfolio")
     portfolio_parser.add_argument("--positions-db", default="data/positions.sqlite")
@@ -411,7 +412,7 @@ def main(argv=None) -> int:
             pages=args.pages,
             include_broad_weather=args.include_broad_weather,
         )
-        print(json.dumps(result, indent=2))
+        print(json.dumps(result if args.full else _dry_run_summary(result), indent=2))
         return 0
 
     if args.command == "portfolio":
@@ -441,6 +442,63 @@ def main(argv=None) -> int:
 
     return 1
 
+
+def _dry_run_summary(payload: dict) -> dict:
+    weather = payload.get("weather") or {}
+    forecasts = [
+        {
+            "source": forecast.get("source"),
+            "high": forecast.get("max_temp"),
+            "low": forecast.get("min_temp"),
+            "unit": forecast.get("unit"),
+        }
+        for forecast in weather.get("forecasts", [])
+    ]
+    events = []
+    for result in payload.get("results", []):
+        plan = result.get("event_bucket_plan") or {}
+        curve = plan.get("curve") or {}
+        decision = plan.get("decision") or {}
+        candidate = plan.get("simulation_candidate") or {}
+        candidate_curve = candidate.get("curve") or {}
+        events.append({
+            "event": result.get("event_slug"),
+            "settlement": plan.get("settlement_source_status"),
+            "action": decision.get("recommended_action"),
+            "reasons": decision.get("reasons", []),
+            "orders": [
+                {"bucket": order.get("bucket"), "price": order.get("price"), "edge": order.get("edge")}
+                for order in plan.get("orders", [])
+            ],
+            "cost": curve.get("total_cost", 0),
+            "worst_pnl": curve.get("worst_case_pnl", 0),
+            "best_pnl": curve.get("best_case_pnl", 0),
+            "death_gaps": [gap.get("bucket") for gap in curve.get("death_gaps", [])],
+            "simulation_candidate": {
+                "action": candidate.get("recommended_action"),
+                "cost": candidate_curve.get("total_cost", 0),
+                "worst_pnl": candidate_curve.get("worst_case_pnl", 0),
+                "best_pnl": candidate_curve.get("best_case_pnl", 0),
+                "death_gaps": [gap.get("bucket") for gap in candidate_curve.get("death_gaps", [])],
+                "reasons": candidate.get("not_executable_reasons", []),
+            } if candidate else None,
+        })
+    return {
+        "mode": payload.get("mode"),
+        "city": payload.get("city"),
+        "target_date": payload.get("target_date"),
+        "weather": {
+            "forecasts": forecasts,
+            "disagreement": weather.get("disagreement"),
+            "confidence": weather.get("confidence"),
+        },
+        "markets_found": payload.get("markets_found", 0),
+        "events": events,
+        "recommended_action": payload.get("recommended_action", "NO_TRADE"),
+        "blocked_by": payload.get("blocked_by"),
+        "risk_reasons": payload.get("risk_reasons", []),
+        "safety": payload.get("safety", []),
+    }
 
 def _analysis_payload(curve, decision) -> dict:
     return {
