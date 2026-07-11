@@ -136,27 +136,32 @@ def fetch_configured_forecast(provider: str, latitude: float, longitude: float, 
 def _extract_cwa_forecast(payload: dict, target_date: str) -> tuple[Optional[float], Optional[float], str]:
     maximum = minimum = None
     observed_at = ""
-    locations = (((payload.get("records") or {}).get("locations") or {}).get("location") or []) if isinstance(payload, dict) else []
-    for location in locations:
-        for element in location.get("weatherElement") or []:
-            name = str(element.get("elementName") or "").lower()
-            if "最高" not in name and "最低" not in name and "maxt" not in name and "mint" not in name:
-                continue
-            for item in element.get("time") or []:
-                start = str(item.get("startTime") or item.get("dataTime") or "")
-                if not start.startswith(target_date):
+    locations_value = ((payload.get("records") or {}).get("locations") or []) if isinstance(payload, dict) else []
+    locations = locations_value if isinstance(locations_value, list) else [locations_value]
+    for container in locations:
+        location_items = container.get("location") if isinstance(container, dict) else []
+        if isinstance(location_items, dict):
+            location_items = [location_items]
+        for location in location_items or []:
+            for element in location.get("weatherElement") or []:
+                name = str(element.get("elementName") or "").lower()
+                if "最高" not in name and "最低" not in name and "maxt" not in name and "mint" not in name:
                     continue
-                value = ((item.get("elementValue") or [{}])[0] if isinstance(item.get("elementValue"), list) else item.get("elementValue"))
-                value = value.get("value") if isinstance(value, dict) else value
-                try:
-                    number = float(value)
-                except (TypeError, ValueError):
-                    continue
-                observed_at = start
-                if "最高" in name or "maxt" in name:
-                    maximum = number if maximum is None else max(maximum, number)
-                else:
-                    minimum = number if minimum is None else min(minimum, number)
+                for item in element.get("time") or []:
+                    start = str(item.get("startTime") or item.get("dataTime") or "")
+                    if not start.startswith(target_date):
+                        continue
+                    value = ((item.get("elementValue") or [{}])[0] if isinstance(item.get("elementValue"), list) else item.get("elementValue"))
+                    value = value.get("value") if isinstance(value, dict) else value
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    observed_at = start
+                    if "最高" in name or "maxt" in name:
+                        maximum = number if maximum is None else max(maximum, number)
+                    else:
+                        minimum = number if minimum is None else min(minimum, number)
     return maximum, minimum, observed_at
 
 
