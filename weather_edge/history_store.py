@@ -123,8 +123,13 @@ def _save_city_snapshot(conn, snapshot: dict, fallback_observed_at: str) -> None
     hko = (snapshot.get("weather") or {}).get("hko_observation")
     if city == "Hong Kong" and hko:
         conn.execute(
-            "INSERT INTO hko_realtime_observations VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (observed_at, target_date, hko.get("observation_time", ""), hko.get("current_temp"), hko.get("max_temp_since_midnight"), hko.get("min_temp_since_midnight"), hko.get("unit", ""), int(bool(hko.get("healthy"))), int(bool(hko.get("is_final"))), hko.get("raw_payload_hash", ""), json.dumps(hko, sort_keys=True)),
+            """INSERT INTO hko_realtime_observations
+               SELECT NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM hko_realtime_observations
+                   WHERE observation_time = ? AND raw_payload_hash = ?
+               )""",
+            (observed_at, target_date, hko.get("observation_time", ""), hko.get("current_temp"), hko.get("max_temp_since_midnight"), hko.get("min_temp_since_midnight"), hko.get("unit", ""), int(bool(hko.get("healthy"))), int(bool(hko.get("is_final"))), hko.get("raw_payload_hash", ""), json.dumps(hko, sort_keys=True), hko.get("observation_time", ""), hko.get("raw_payload_hash", "")),
         )
     for forecast in (snapshot.get("weather") or {}).get("forecasts") or []:
         conn.execute(

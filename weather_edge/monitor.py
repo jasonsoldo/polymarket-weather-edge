@@ -1,9 +1,10 @@
 import json
 import re
 import time
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from .event_bucket_analysis import build_event_trade_plan, group_event_markets
 from .alert_manager import emit_alerts
@@ -50,7 +51,7 @@ def build_live_snapshot(
     max_pages: int = 5,
     scan_all_pages: bool = False,
 ) -> dict:
-    target_date = _resolve_target_date(target_date)
+    target_date = _resolve_target_date(target_date, "Asia/Hong_Kong" if city == "Hong Kong" else "UTC")
     markets = discovered_markets if discovered_markets is not None else fetch_weather_markets(
         market_limit, city=city, tag_id=tag_id, slug=slug, query=query, pages=pages, max_pages=max_pages, scan_all_pages=scan_all_pages,
         include_broad_weather=include_broad_weather,
@@ -133,7 +134,7 @@ def build_all_cities_snapshot(
     max_pages: int = 5,
     scan_all_pages: bool = False,
 ) -> dict:
-    target_date = _resolve_target_date(target_date)
+    target_date = _resolve_target_date(target_date, "Asia/Hong_Kong")
     strict_markets = _markets_for_target_date(
         fetch_weather_markets(market_limit, city="", pages=pages, max_pages=max_pages, scan_all_pages=scan_all_pages, include_broad_weather=include_broad_weather),
         target_date,
@@ -297,8 +298,11 @@ def run_all_cities_monitor_loop(
     return runs
 
 
-def _resolve_target_date(target_date: str) -> str:
-    return date.today().isoformat() if target_date.strip().lower() == "today" else target_date
+def _resolve_target_date(target_date: str, timezone_name: str = "UTC", now: Optional[datetime] = None) -> str:
+    if target_date.strip().lower() != "today":
+        return target_date
+    current = now or datetime.now(timezone.utc)
+    return current.astimezone(ZoneInfo(timezone_name)).date().isoformat()
 
 
 def _markets_for_target_date(markets, target_date: str):

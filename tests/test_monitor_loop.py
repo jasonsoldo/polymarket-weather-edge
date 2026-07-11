@@ -5,11 +5,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from weather_edge.market_scanner import WeatherMarket
-from weather_edge.monitor import build_all_cities_snapshot, build_live_snapshot, run_live_monitor_loop
+from weather_edge.monitor import _resolve_target_date, build_all_cities_snapshot, build_live_snapshot, run_live_monitor_loop
 from weather_edge.weather_sources import WeatherSnapshot
 
 
 class MonitorLoopTests(unittest.TestCase):
+    def test_today_uses_hong_kong_calendar_date_across_utc_midnight(self):
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 7, 11, 23, 45, tzinfo=timezone.utc)
+        self.assertEqual(_resolve_target_date("today", "Asia/Hong_Kong", now), "2026-07-12")
+
     def test_city_unit_uses_celsius_for_unregistered_asian_city(self):
         weather = WeatherSnapshot("Guangzhou", 23.1, 113.3, "2026-07-10", (), None, 0.9)
         with patch("weather_edge.monitor.fetch_weather_markets", return_value=[]), patch(
