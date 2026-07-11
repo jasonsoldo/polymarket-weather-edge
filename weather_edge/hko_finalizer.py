@@ -1,6 +1,7 @@
 """Finalize Hong Kong simulation positions from HKO and Polymarket results."""
 
 import json
+import os
 import sqlite3
 import sys
 from contextlib import closing
@@ -187,7 +188,7 @@ def _finalize_shadow_decisions(conn: sqlite3.Connection, target_date: str, recor
 
 
 def hko_closure_status(history_db: str, orders_db: str) -> dict:
-    status = {"settlement_verified": False, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_samples": 0, "shadow_finalized": 0, "shadow_hypothetical_pnl": 0.0, "shadow_realized_pnl": 0.0, "last_finalized_at": ""}
+    status = {"settlement_verified": False, "settlement_audit_passed": False, "historical_validation_ready": False, "audit_days": 0, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_samples": 0, "shadow_finalized": 0, "shadow_hypothetical_pnl": 0.0, "shadow_realized_pnl": 0.0, "last_finalized_at": ""}
     try:
         with closing(sqlite3.connect(history_db)) as conn:
             row = conn.execute(
@@ -203,10 +204,13 @@ def hko_closure_status(history_db: str, orders_db: str) -> dict:
                 status["markets_resolved"] = len(rows)
                 status["settlement_matches"] = sum(int(item[2]) for item in rows)
                 status["winning_buckets"] = [item[0] for item in rows if item[1] == "Yes"]
-                status["settlement_verified"] = bool(rows) and status["settlement_matches"] == len(rows)
+                status["settlement_audit_passed"] = bool(rows) and status["settlement_matches"] == len(rows)
+                status["audit_days"] = int(conn.execute("SELECT COUNT(*) FROM (SELECT target_date FROM hko_market_resolutions GROUP BY target_date HAVING COUNT(*) > 0 AND SUM(settlement_match) = COUNT(*))").fetchone()[0])
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='shadow_decisions'").fetchone():
                 shadow = conn.execute("SELECT COUNT(*), SUM(CASE WHEN finalized_at IS NOT NULL THEN 1 ELSE 0 END), COALESCE(SUM(hypothetical_realized_pnl), 0) FROM shadow_decisions").fetchone()
                 status.update({"shadow_samples": int(shadow[0]), "shadow_finalized": int(shadow[1] or 0), "shadow_hypothetical_pnl": float(shadow[2] or 0)})
+            status["historical_validation_ready"] = status["audit_days"] >= 30 and status["shadow_finalized"] >= 7
+            status["settlement_verified"] = status["historical_validation_ready"] and os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true"
     except sqlite3.Error:
         pass
     try:

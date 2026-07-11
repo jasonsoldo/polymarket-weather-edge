@@ -97,7 +97,7 @@ def _hong_kong_strip(snapshot):
     closure = snapshot.get("hong_kong_closure") or {}
     forecasts = weather.get("forecasts") or []
     hko = next((item for item in forecasts if item.get("source") == "hko_forecast"), {})
-    state = "VERIFIED" if closure.get("settlement_verified") else "PENDING"
+    state = "VERIFIED" if closure.get("settlement_verified") else ("AUDIT PASSED" if closure.get("settlement_audit_passed") else "PENDING")
     blocker = "" if state == "VERIFIED" else "pending_hko_settlement_validation"
     return f"<section class='status-bar'><div><small>HONG KONG FIRST</small><strong class='{_state_class(state)}'>{_esc(state)}</strong><span>{_esc(blocker or 'HKO final result matches Polymarket')}</span></div><div class='scan-state'><small>HKO / SHADOW</small><b>{_esc(hko.get('max_temp', '-'))}°C</b><span>final {_esc(closure.get('final_daily_max', '-'))}°C · realized {_esc(_number(closure.get('shadow_realized_pnl', 0)))}</span></div><a href='/hong-kong'>DETAILS →</a></section>"
 
@@ -347,9 +347,9 @@ def _hong_kong_module(snapshot):
     forecasts = weather.get("forecasts") or []
     forecast_rows = [(item.get("source", ""), item.get("max_temp", ""), item.get("unit", ""), item.get("updated_at", "")) for item in forecasts]
     verified = bool(closure.get("settlement_verified"))
-    state = "official_source_verified" if verified else "pending"
+    state = "official_source_verified" if verified else "pending_hko_settlement_validation"
     blocker = "" if verified else "pending_hko_settlement_validation"
-    summary = _table(("Settlement status", "Last final date", "Final daily max", "Resolved markets", "Matches", "Shadow samples", "Finalized", "Hypothetical PnL", "Block reason"), [(state, closure.get("last_final_date", ""), closure.get("final_daily_max", ""), closure.get("markets_resolved", 0), closure.get("settlement_matches", 0), closure.get("shadow_samples", 0), closure.get("shadow_finalized", 0), _number(closure.get("shadow_hypothetical_pnl", 0)), blocker)])
+    summary = _table(("Settlement status", "Audit days", "Last final date", "Final daily max", "Resolved markets", "Matches", "Shadow samples", "Finalized", "Hypothetical PnL", "Block reason"), [(state, closure.get("audit_days", 0), closure.get("last_final_date", ""), closure.get("final_daily_max", ""), closure.get("markets_resolved", 0), closure.get("settlement_matches", 0), closure.get("shadow_samples", 0), closure.get("shadow_finalized", 0), _number(closure.get("shadow_hypothetical_pnl", 0)), blocker)])
     return "<h2>Hong Kong Overview</h2>" + summary + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Winning buckets</h2>" + "".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket"
 
 def _table(headers, rows):

@@ -68,6 +68,7 @@ class SettlementSourceTests(unittest.TestCase):
         with patch("weather_edge.settlement_source.get_json", side_effect=responses):
             result = fetch_settlement_observation(rule)
 
+        self.assertEqual(settlement_source_capability(rule), "pending_hko_settlement_validation")
         self.assertEqual(result.status, "available")
         self.assertAlmostEqual(result.max_temp, 31.2)
         self.assertAlmostEqual(result.min_temp, 26.1)

@@ -38,7 +38,7 @@ def settlement_status_allows_scoring(status: str) -> bool:
 def settlement_source_capability(rule: SettlementRule) -> str:
     source = rule.settlement_source.lower()
     if "hong kong observatory" in source:
-        return "supported_official"
+        return "official_source_verified" if os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true" else "pending_hko_settlement_validation"
     if "nws" in source or "national weather service" in source or "noaa" in source:
         return "supported_official"
     if "wunderground" in source or "weather underground" in source:
@@ -63,12 +63,14 @@ def fetch_settlement_observation(rule: SettlementRule) -> SettlementSourceResult
             url = template.replace("{station}", rule.target_station_or_data_source).replace("{date}", rule.date)
             result = fetch_wunderground_browser(url, rule.target_station_or_data_source, rule.date, rule.measurement_unit)
         return SettlementSourceResult(result.status, rule.settlement_source, result.station, result.date, result.daily_high, result.daily_low, result.unit, result.updated_at, result.reason)
+    if "hong kong observatory" in rule.settlement_source.lower():
+        if rule.date >= date.today().isoformat():
+            return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "settlement day is not complete")
+        return _fetch_hko(rule)
     if capability != "supported_official":
         return SettlementSourceResult(capability, rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "official adapter unavailable")
     if rule.date >= date.today().isoformat():
         return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "settlement day is not complete")
-    if "hong kong observatory" in rule.settlement_source.lower():
-        return _fetch_hko(rule)
     if any(name in rule.settlement_source.lower() for name in ("met office", "jma", "kma", "cwa", "meteostat")):
         return _fetch_configured_official(rule)
     return _fetch_nws(rule)
