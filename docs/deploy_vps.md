@@ -178,19 +178,32 @@ sudo systemctl status weather-edge-web
 curl http://127.0.0.1:8080/health
 ```
 
-For all-cities background collection, create
-`/etc/systemd/system/weather-edge-monitor-all.service`:
+For all-cities background collection, install the repository service template:
+
+```bash
+sudo cp deploy/weather-edge-monitor-all.service /etc/systemd/system/weather-edge-monitor-all.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now weather-edge-monitor-all
+```
+
+The service continuously records forecasts, markets, bucket probabilities, and
+settlement observations in `data/market_history.sqlite`. It uses `--date today`,
+so the target date advances automatically after midnight. The installed unit is:
 
 ```ini
 [Unit]
-Description=Weather Edge all-cities read-only monitor
+Description=WeatherEdge all-cities market and forecast history collector
+Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
+User=jason
 WorkingDirectory=/opt/polymarket-weather-edge
-ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli live-monitor-all --date today --output logs/live_monitor_all.jsonl --interval 300 --limit 100 --pages 5
-Restart=on-failure
+EnvironmentFile=/etc/weather-edge.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli live-monitor-all --date today --output /opt/polymarket-weather-edge/logs/live_monitor_all.jsonl --history-db /opt/polymarket-weather-edge/data/market_history.sqlite --alerts-log /opt/polymarket-weather-edge/logs/alerts.jsonl --interval 300 --limit 100 --max-pages 20 --scan-all-pages
+Restart=always
 RestartSec=30
 
 [Install]

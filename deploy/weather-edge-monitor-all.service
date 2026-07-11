@@ -1,0 +1,17 @@
+[Unit]
+Description=WeatherEdge all-cities market and forecast history collector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=jason
+WorkingDirectory=/opt/polymarket-weather-edge
+EnvironmentFile=/etc/weather-edge.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli live-monitor-all --date today --output /opt/polymarket-weather-edge/logs/live_monitor_all.jsonl --history-db /opt/polymarket-weather-edge/data/market_history.sqlite --alerts-log /opt/polymarket-weather-edge/logs/alerts.jsonl --interval 300 --limit 100 --max-pages 20 --scan-all-pages
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
