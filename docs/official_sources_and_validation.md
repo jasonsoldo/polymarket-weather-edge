@@ -5,6 +5,23 @@ Polymarket settlement rule.
 
 ## Environment-backed adapters
 
+Forecast and settlement are separate channels. Configure a provider forecast
+endpoint only when the market city uses that provider; it enriches probability
+estimation but never satisfies the settlement gate:
+
+```bash
+export JMA_FORECAST_URL='https://official.example/forecast'
+export KMA_FORECAST_URL='https://official.example/forecast'
+export CWA_FORECAST_URL='https://official.example/forecast'
+export JMA_API_KEY='...'
+export KMA_API_KEY='...'
+export CWA_API_KEY='...'
+```
+
+The endpoint must return a machine-readable date, daily high, daily low, and
+unit. HKO and NWS use their dedicated official adapters. Forecast data from
+Open-Meteo or other providers remains forecast-only.
+
 The configured adapters use strict `date` and `station` checks. Configure only
 the source named by the market rule:
 

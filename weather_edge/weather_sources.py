@@ -4,6 +4,7 @@ from datetime import date
 from typing import Optional
 
 from .http_client import get_json
+from .official_sources import extract_observation
 
 
 OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast"
@@ -76,6 +77,10 @@ def fetch_weather_snapshot(
     metoffice = fetch_metoffice(latitude, longitude, target_date, unit)
     if metoffice:
         forecasts.append(metoffice)
+    for provider in _configured_provider_for_city(city):
+        forecast = fetch_configured_forecast(provider, latitude, longitude, target_date, unit)
+        if forecast:
+            forecasts.append(forecast)
 
     max_values = [forecast.max_temp for forecast in forecasts if forecast.max_temp is not None]
     min_values = [forecast.min_temp for forecast in forecasts if forecast.min_temp is not None]
@@ -95,6 +100,44 @@ def fetch_weather_snapshot(
         disagreement=disagreement,
         confidence=confidence,
     )
+
+
+def fetch_configured_forecast(provider: str, latitude: float, longitude: float, target_date: str, unit: str) -> Optional[DailyForecast]:
+    prefix = provider.upper().replace(" ", "")
+    endpoint = os.getenv(f"{prefix}_FORECAST_URL", "").strip()
+    key = os.getenv(f"{prefix}_API_KEY", "").strip()
+    if not endpoint:
+        return None
+    endpoint = endpoint.replace("{date}", target_date).replace("{lat}", str(latitude)).replace("{lon}", str(longitude))
+    params = {"latitude": latitude, "longitude": longitude, "date": target_date, "target_date": target_date, "unit": unit}
+    headers = {"User-Agent": "WeatherEdge/1.0"}
+    if key:
+        params["apiKey"] = key
+    try:
+        payload = get_json(endpoint, params, headers=headers)
+        maximum, minimum, observed_at, response_date, response_station, response_unit = extract_observation(payload)
+        if response_date and not str(response_date).startswith(target_date):
+            return None
+        if maximum is None and minimum is None:
+            return None
+        return DailyForecast(
+            f"{provider.lower()}_forecast", target_date, maximum, minimum,
+            response_unit or ("F" if unit.lower().startswith("f") else "C"),
+            observed_at or target_date, f"{latitude},{longitude}", "", f"{provider.lower()}_official_forecast", "official",
+        )
+    except (RuntimeError, TypeError, ValueError, KeyError):
+        return None
+
+
+def _configured_provider_for_city(city: str) -> tuple[str, ...]:
+    normalized = city.strip().lower()
+    if normalized in {"tokyo", "haneda", "rjtt"}:
+        return ("JMA",)
+    if normalized in {"seoul", "incheon", "rksi"}:
+        return ("KMA",)
+    if normalized in {"taipei", "songshan", "rcss"}:
+        return ("CWA",)
+    return ()
 
 
 def fetch_hko_forecast(city: str, target_date: str) -> Optional[DailyForecast]:

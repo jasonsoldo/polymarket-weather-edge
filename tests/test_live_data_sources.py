@@ -1,13 +1,21 @@
 import unittest
+import os
 from unittest.mock import patch
 
 from weather_edge.market_scanner import discover_weather_tags, fetch_weather_markets
 from weather_edge.city_registry import match_city
 from weather_edge.orderbook import fetch_book_summary
-from weather_edge.weather_sources import fetch_hko_forecast, fetch_weather_snapshot
+from weather_edge.weather_sources import fetch_configured_forecast, fetch_hko_forecast, fetch_weather_snapshot
 
 
 class LiveDataSourceParsingTests(unittest.TestCase):
+    def test_configured_official_forecast_is_separate_from_settlement(self):
+        with patch.dict(os.environ, {"JMA_FORECAST_URL": "https://jma.test/forecast", "JMA_API_KEY": "key"}), patch("weather_edge.weather_sources.get_json", return_value={"date": "2026-07-12", "daily_high": 31, "daily_low": 24, "unit": "C"}):
+            forecast = fetch_configured_forecast("JMA", 35.6, 139.7, "2026-07-12", "C")
+        self.assertEqual(forecast.source, "jma_forecast")
+        self.assertEqual(forecast.max_temp, 31.0)
+        self.assertEqual(forecast.station_or_grid, "official")
+
     def test_hko_forecast_reads_official_daily_high_low(self):
         with patch("weather_edge.weather_sources.get_json", return_value={"updateTime": "2026-07-10T11:30:00+08:00", "weatherForecast": [{"forecastDate": "20260710", "forecastMaxtemp": {"value": 32, "unit": "C"}, "forecastMintemp": {"value": 27, "unit": "C"}}]}):
             forecast = fetch_hko_forecast("Hong Kong", "2026-07-10")
