@@ -157,7 +157,11 @@ def _extract_cwa_forecast(payload: dict, target_date: str) -> tuple[Optional[flo
                         continue
                     raw_value = item.get("elementValue") or item.get("ElementValue")
                     value = (raw_value or [{}])[0] if isinstance(raw_value, list) else raw_value
-                    value = (value.get("value") or value.get("Value")) if isinstance(value, dict) else value
+                    if isinstance(value, dict):
+                        if "最高" in name or "maxt" in name:
+                            value = value.get("MaxTemperature") or value.get("value") or value.get("Value")
+                        else:
+                            value = value.get("MinTemperature") or value.get("value") or value.get("Value")
                     try:
                         number = float(value)
                     except (TypeError, ValueError):
