@@ -35,7 +35,7 @@ class HkoFinalizerTests(unittest.TestCase):
             save_monitor_snapshot(history_db, {
                 "observed_at": "2026-07-10T00:00:00Z", "city": "Hong Kong", "target_date": "2026-07-10", "weather": {"confidence": 0.85, "disagreement": 0.5},
                 "markets": [{"event_id": "event-1", "event_slug": "hk-high", "markets": [{"market_id": "market-31", "question": market["question"]}], "event_bucket_plan": {
-                    "settlement_rule": {"market_type": "highest_temperature"}, "decision": {"recommended_action": "block_new_position", "reasons": ["shadow_only"]},
+                    "settlement_rule": {"market_type": "max_temp"}, "decision": {"recommended_action": "block_new_position", "reasons": ["shadow_only"]},
                     "orders": [], "curve": {"best_case_pnl": 0.6, "worst_case_pnl": -0.4},
                     "simulation_candidate": {"orders": [{"market_id": "market-31", "token_id": "yes-token", "bucket": "31C", "price": 0.4, "size": 1.0}], "curve": {"best_case_pnl": 0.6, "worst_case_pnl": -0.4}},
                 }}],
