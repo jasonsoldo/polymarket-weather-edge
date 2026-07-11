@@ -3,10 +3,16 @@ import os
 from unittest.mock import patch
 
 from weather_edge.settlement_rules import SettlementRule
-from weather_edge.settlement_source import fetch_settlement_observation, settlement_source_capability
+from weather_edge.settlement_source import _hko_date_matches, fetch_settlement_observation, settlement_source_capability
 
 
 class SettlementSourceTests(unittest.TestCase):
+    def test_hko_history_accepts_full_and_short_date_formats(self):
+        self.assertTrue(_hko_date_matches("2026-06-01", "2026-06-01"))
+        self.assertTrue(_hko_date_matches("01/06", "2026-06-01"))
+        self.assertTrue(_hko_date_matches("1", "2026-06-01"))
+        self.assertFalse(_hko_date_matches("02", "2026-06-01"))
+
     def test_configured_cwa_official_adapter_reads_extremes(self):
         rule = _rule("CWA", "RCSS", "2020-07-10")
         old = {name: os.environ.get(name) for name in ("CWA_API_KEY", "CWA_SETTLEMENT_URL")}

@@ -167,12 +167,11 @@ def _fetch_hko(rule: SettlementRule) -> SettlementSourceResult:
 
 def _hko_daily_value(data_type: str, params: dict, target_date: str) -> Optional[float]:
     payload = get_json(HKO_OPEN_DATA_API, {"dataType": data_type, **params})
-    fields = [str(field).lower() for field in payload.get("fields") or []]
     for row in payload.get("data") or []:
         values = list(row) if isinstance(row, (list, tuple)) else []
         if not values:
             continue
-        if target_date[-2:] not in {str(value).zfill(2) for value in values[:2]}:
+        if not _hko_date_matches(values[0], target_date):
             continue
         for value in reversed(values):
             try:
@@ -180,6 +179,17 @@ def _hko_daily_value(data_type: str, params: dict, target_date: str) -> Optional
             except (TypeError, ValueError):
                 continue
     return None
+
+
+def _hko_date_matches(value, target_date: str) -> bool:
+    text = str(value).strip()
+    year, month, day = target_date.split("-")
+    normalized = text.replace("/", "-")
+    if normalized == target_date or normalized.endswith(f"-{month}-{day}"):
+        return True
+    if text in {day, str(int(day))}:
+        return True
+    return text in {f"{day}/{month}", f"{month}/{day}", f"{day}-{month}", f"{month}-{day}"}
 
 
 def _fetch_nws(rule: SettlementRule) -> SettlementSourceResult:
