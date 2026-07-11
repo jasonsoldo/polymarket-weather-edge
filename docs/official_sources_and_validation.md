@@ -18,6 +18,9 @@ export KMA_API_KEY='...'
 export CWA_API_KEY='...'
 ```
 
+For Taipei/Songshan, the CWA one-week township forecast dataset is
+`F-D0047-063`; its request uses `Authorization=<member token>`.
+
 The endpoint must return a machine-readable date, daily high, daily low, and
 unit. HKO and NWS use their dedicated official adapters. Forecast data from
 Open-Meteo or other providers remains forecast-only.
