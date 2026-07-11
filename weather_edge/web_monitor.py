@@ -22,9 +22,78 @@ def read_recent_snapshots(log_path: str, limit: int = 20) -> list[dict]:
 
 
 def render_dashboard(snapshot: dict, history: list[dict]) -> str:
-    return _render_simple_overview(snapshot, history, "WeatherEdge All Cities Monitor" if snapshot.get("mode") == "all_cities" else "WeatherEdge Monitor") + _compatibility_summary(snapshot)
+    if snapshot.get("mode") == "all_cities":
+        return _render_terminal_dashboard(snapshot, history)
+    return _render_overview(snapshot, history, "WeatherEdge Monitor") + _compatibility_summary(snapshot)
 
-def _render_simple_overview(snapshot: dict, history: list[dict], title: str) -> str:
+
+def _render_terminal_dashboard(snapshot: dict, history: list[dict]) -> str:
+    action = snapshot.get("recommended_action", "UNKNOWN")
+    portfolio = snapshot.get("portfolio") or {}
+    rows = _monitor_rows(snapshot)
+    blockers = snapshot.get("risk_reasons", []) or [c.get("block_reason") for c in snapshot.get("cities", []) if c.get("block_reason")]
+    market_rows = []
+    for row in rows[:80]:
+        market_rows.append(
+            "<tr>"
+            f"<td><b>{_esc(row['city'])}</b><small>{_esc(row['normalized_city'])} · {_esc(row['station_code'] or 'station pending')}</small></td>"
+            f"<td class='market-cell'><b>{_esc(row['market'])}</b><small>{_esc(row['settlement'] or 'settlement source pending')}</small></td>"
+            f"<td><b>{_esc(row['model_temperature'] or '—')}</b><small>{_esc(row['weather'] or 'weather pending')}</small></td>"
+            f"<td class='money'>{_esc(row['investment'])}<small>cap {_esc(row['capital_limit'])}</small></td>"
+            f"<td class='positive'>+{_esc(row['profit'])}</td><td class='negative'>-{_esc(row['loss'])}</td>"
+            f"<td><span class='terminal-badge { _esc(row['action']) }'>{_esc(row['action'])}</span><small>{_esc(row['block_reason'] or row['source_state'])}</small></td>"
+            "</tr>"
+        )
+    city_rows = []
+    for city in snapshot.get("cities", [])[:30]:
+        weather = city.get("weather") or {}
+        forecasts = weather.get("forecasts") or []
+        forecast = forecasts[0] if forecasts else {}
+        state = city.get("recommended_action", "NO_MARKET")
+        city_rows.append(
+            f"<div class='city-strip'><div><b>{_esc(city.get('city', 'Unknown'))}</b><small>{_esc(city.get('markets_found', 0))} markets · {_esc(city.get('city_registry_status', 'registered'))}</small></div>"
+            f"<div class='temp'>{_esc(forecast.get('max_temp', '—'))}° / {_esc(forecast.get('min_temp', '—'))}°<small>{_esc(forecast.get('unit', ''))}</small></div>"
+            f"<div class='confidence'>conf {_esc(weather.get('confidence', '—'))}<small>Δ {_esc(weather.get('disagreement', '—'))}</small></div>"
+            f"<span class='terminal-badge { _esc(state) }'>{_esc(state)}</span></div>"
+        )
+    chart = _pnl_chart(snapshot)
+    blocker_html = "".join(f"<div class='risk-row'><span class='risk-dot'></span><span>{_esc(reason)}</span></div>" for reason in blockers[:8]) or "<div class='quiet'>No active blockers</div>"
+    return f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='refresh' content='30'><title>WeatherEdge Terminal</title>
+<style>{_terminal_css()}</style></head><body><div class='terminal'>
+<aside class='rail'><div class='terminal-logo'>W<span>E</span><small>WEATHER EDGE</small></div><nav><a class='active' href='/'>⌂<span>Overview</span></a><a href='/markets'>◈<span>Markets</span></a><a href='/cities'>◎<span>Cities</span></a><a href='/weather-sources'>◒<span>Weather</span></a><a href='/settlement-sources'>◌<span>Settlement</span></a><a href='/risk'>!</a><a href='/positions'>▣</a></nav><div class='rail-foot'>LIVE<br><span>30s refresh</span></div></aside>
+<main><header class='terminal-head'><div><div class='overline'>WEATHEREDGE / ALL CITIES CONTROL ROOM</div><h1>WeatherEdge All Cities Monitor</h1><p>Real market intelligence · risk-gated simulation · target {_esc(snapshot.get('target_date', ''))}</p></div><div class='head-status'><span class='live-dot'></span> LIVE MONITOR <small>{_esc(snapshot.get('observed_at', ''))}</small></div></header>
+<section class='status-bar'><div><small>SYSTEM ACTION</small><strong class='{_state_class(action)}'>{_esc(action)}</strong><span>{_esc(blockers[0] if blockers else 'No active blockers')}</span></div><div class='scan-state'><small>DISCOVERY</small><b>{_esc(snapshot.get('scan_completed', False))}</b><span>{_esc(snapshot.get('pages_scanned', 0))} pages · {_esc(snapshot.get('markets_scanned', 0))} scanned</span></div></section>
+<section class='metric-grid'>{_terminal_metric('CITIES', snapshot.get('cities_discovered', snapshot.get('cities_monitored', 0)), 'registered ' + str(snapshot.get('registered_cities', 0)))}{_terminal_metric('TEMP MARKETS', snapshot.get('temperature_markets_found', snapshot.get('markets_found', 0)), 'strict discovery')}{_terminal_metric('COST BASIS', _number(portfolio.get('cost_basis', 0)), 'capital deployed')}{_terminal_metric('MARKED VALUE', _number(portfolio.get('market_value', 0)), 'bid marked')}{_terminal_metric('UNREALIZED PNL', _number(portfolio.get('unrealized_pnl', 0)), 'live estimate')}{_terminal_metric('STALE POSITIONS', portfolio.get('stale_positions', 0), 'must be zero')}</section>
+<section class='main-grid'><section class='panel market-panel'><div class='panel-head'><div><small class='overline'>LIVE MARKET TAPE</small><h2>Real Weather Markets</h2></div><a href='/markets'>VIEW ALL →</a></div><div class='table-wrap'><table><thead><tr><th>City / station</th><th>Market / settlement</th><th>Model / weather</th><th>Investment</th><th>Potential</th><th>Max loss</th><th>Action</th></tr></thead><tbody>{''.join(market_rows) or "<tr><td colspan='7' class='quiet'>No strict city temperature markets found.</td></tr>"}</tbody></table></div></section><aside class='side-stack'><section class='panel'><div class='panel-head'><div><small class='overline'>RISK ENGINE</small><h2>Blockers</h2></div><a href='/risk'>DETAILS →</a></div>{blocker_html}</section><section class='panel chart-panel'><div class='panel-head'><div><small class='overline'>P&L CURVE</small><h2>Current event shape</h2></div><span class='mini-label'>SIMULATION</span></div>{chart}</section></aside></section>
+<section class='panel city-panel'><div class='panel-head'><div><small class='overline'>WEATHER NETWORK</small><h2>City pulse</h2></div><a href='/cities'>VIEW ALL →</a></div><div class='city-list'>{''.join(city_rows) or "<div class='quiet'>No cities discovered.</div>"}</div></section>
+</main></div></body></html>"""
+
+
+def _terminal_metric(label, value, note):
+    return f"<div class='metric-card'><small>{_esc(label)}</small><b>{_esc(value)}</b><span>{_esc(note)}</span></div>"
+
+
+def _pnl_chart(snapshot):
+    points = []
+    for city in snapshot.get("cities", [snapshot]):
+        for event in city.get("markets", []):
+            for row in ((event.get("event_bucket_plan") or {}).get("curve") or {}).get("rows", []):
+                try:
+                    points.append(float(row.get("pnl_if_wins", 0)))
+                except (TypeError, ValueError):
+                    pass
+    if not points:
+        return "<div class='chart-empty'>PnL curve appears when a complete bucket plan is available.</div>"
+    low, high = min(points), max(points)
+    span = max(1.0, high - low)
+    coords = " ".join(f"{index * 100 / max(1, len(points) - 1):.1f},{82 - (value - low) * 64 / span:.1f}" for index, value in enumerate(points))
+    return f"<svg class='pnl-svg' viewBox='0 0 100 90' preserveAspectRatio='none'><defs><linearGradient id='fill' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='#35c48b' stop-opacity='.25'/><stop offset='1' stop-color='#35c48b' stop-opacity='0'/></linearGradient></defs><polyline points='0,82 {coords} 100,82' fill='url(#fill)' stroke='none'/><polyline points='{coords}' fill='none' stroke='#35c48b' stroke-width='1.4'/></svg><div class='chart-labels'><span>Worst {_number(low)}</span><span>Best {_number(high)}</span></div>"
+
+
+def _terminal_css():
+    return """:root{--bg:#f3f5f7;--panel:#fff;--ink:#18212b;--muted:#77818d;--line:#e1e6ea;--dark:#172027;--green:#07865c;--red:#c53f4b;--amber:#b9781f}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:13px Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.terminal{display:flex;min-height:100vh}.rail{width:76px;background:var(--dark);color:#98a5ad;display:flex;flex-direction:column;align-items:center;padding:22px 10px}.terminal-logo{color:#fff;font-weight:900;font-size:24px;letter-spacing:-2px;text-align:center}.terminal-logo span{color:#55c99b}.terminal-logo small{display:block;font-size:7px;letter-spacing:1px;color:#7f8c94;margin-top:6px}.rail nav{width:100%;display:flex;flex-direction:column;gap:8px;margin-top:42px}.rail nav a{height:42px;color:#83919a;text-decoration:none;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:19px;gap:11px}.rail nav a span{display:none}.rail nav a.active,.rail nav a:hover{background:#26343c;color:#fff}.rail-foot{margin-top:auto;text-align:center;font-size:9px;letter-spacing:1px;color:#55c99b;line-height:1.8}.rail-foot span{color:#697880;letter-spacing:0}main{width:100%;max-width:1800px;padding:30px 36px}.terminal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px}.overline{font-size:9px;font-weight:800;letter-spacing:1.25px;color:#8b949e}.terminal-head h1{font-size:28px;margin:7px 0 3px;letter-spacing:-.8px}.terminal-head p{color:var(--muted);margin:0}.head-status{color:var(--green);font-size:10px;font-weight:800;letter-spacing:.8px}.head-status small{display:block;text-align:right;color:var(--muted);font-weight:500;letter-spacing:0;margin-top:7px}.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#34b781;margin-right:7px;box-shadow:0 0 0 3px #d9f6eb}.status-bar,.panel,.metric-card{background:var(--panel);border:1px solid var(--line);border-radius:9px}.status-bar{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;margin-bottom:13px}.status-bar small,.metric-card small{display:block;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:1px}.status-bar strong{display:block;font-size:27px;letter-spacing:-.6px;margin:4px 0}.status-bar span,.scan-state span{display:block;color:var(--muted);font-size:11px}.scan-state{text-align:right;border-left:1px solid var(--line);padding-left:28px}.scan-state b{display:block;font-size:16px;margin:4px 0}.metric-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:13px}.metric-card{padding:14px 15px}.metric-card b{display:block;font-size:22px;margin:9px 0 4px;letter-spacing:-.5px}.metric-card span{font-size:10px;color:var(--muted)}.main-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,.65fr);gap:13px}.side-stack{display:flex;flex-direction:column;gap:13px}.panel{padding:18px;min-width:0}.panel-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}.panel-head h2{font-size:15px;margin:6px 0 0}.panel-head a{font-size:9px;color:var(--green);font-weight:800;text-decoration:none;letter-spacing:.6px}.mini-label{font-size:9px;color:var(--amber);font-weight:800}.table-wrap{overflow:auto}.table-wrap table{width:100%;min-width:840px;border-collapse:collapse}.table-wrap th{font-size:9px;color:#8a949e;text-align:left;font-weight:800;letter-spacing:.75px;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}.table-wrap td{padding:12px 8px;border-bottom:1px solid #edf0f2;vertical-align:top;font-size:11px}.table-wrap td small,.city-strip small{display:block;color:var(--muted);font-size:9px;line-height:1.55;margin-top:4px}.market-cell{max-width:290px}.market-cell b{font-weight:650}.money{font-variant-numeric:tabular-nums}.positive{color:var(--green);font-weight:800}.negative{color:var(--red);font-weight:800}.terminal-badge{display:inline-block;border-radius:999px;padding:4px 7px;font-size:8px;font-weight:800;letter-spacing:.25px;background:#eef1f3;color:#66717a;white-space:nowrap}.terminal-badge.NO_TRADE,.terminal-badge.block_new_position{color:var(--red);background:#fff0f1}.terminal-badge.WATCH{color:var(--amber);background:#fff6e5}.terminal-badge.success{color:var(--green);background:#eaf8f2}.risk-row{display:flex;gap:9px;align-items:flex-start;padding:11px 0;border-bottom:1px solid #edf0f2;color:#596570;font-size:11px;line-height:1.45}.risk-row:last-child{border:0}.risk-dot{width:6px;height:6px;border-radius:50%;background:var(--red);margin-top:5px;flex:none}.quiet,.chart-empty{color:var(--muted);font-size:11px;padding:20px 0}.chart-panel{min-height:160px}.pnl-svg{width:100%;height:112px;display:block;background:linear-gradient(to bottom,#f8fbf9 1px,transparent 1px);background-size:100% 28px;border-bottom:1px solid var(--line)}.chart-labels{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:7px}.city-panel{margin-top:13px}.city-list{display:grid;grid-template-columns:repeat(3,1fr);gap:1px 20px}.city-strip{display:grid;grid-template-columns:1.4fr .9fr .8fr auto;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid #edf0f2}.city-strip b{font-size:12px}.temp{font-weight:700;font-variant-numeric:tabular-nums}.confidence{font-size:10px;color:#56616b}.confidence small{font-size:9px}.temp small{display:inline;color:var(--muted);margin-left:3px}.city-strip .terminal-badge{justify-self:end}@media(max-width:1150px){main{padding:24px}.metric-grid{grid-template-columns:repeat(3,1fr)}.main-grid{grid-template-columns:1fr}.city-list{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.rail{width:58px}.terminal-logo small{display:none}main{padding:18px 12px}.terminal-head{display:block}.head-status{margin-top:18px}.head-status small{text-align:left}.status-bar{display:block}.scan-state{text-align:left;border:0;border-top:1px solid var(--line);margin-top:14px;padding:14px 0 0}.metric-grid{grid-template-columns:repeat(2,1fr)}.metric-card b{font-size:18px}.city-list{grid-template-columns:1fr}.city-strip{grid-template-columns:1fr 1fr}.city-strip .terminal-badge{justify-self:start}}"""
+
+def _render_simple_overview_legacy(snapshot: dict, history: list[dict], title: str) -> str:
     action = snapshot.get("recommended_action", "UNKNOWN")
     portfolio = snapshot.get("portfolio") or {}
     cities = snapshot.get("cities", [snapshot])
