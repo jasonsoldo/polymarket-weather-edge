@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -51,10 +52,13 @@ def _post_with_retry(url: str, payload: dict) -> None:
     data = json.dumps(payload).encode("utf-8")
     request = Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
     last_error = None
-    for _attempt in range(3):
+    attempts = max(1, int(os.environ.get("WEATHER_EDGE_ALERT_RETRIES", "3")))
+    for attempt in range(attempts):
         try:
             with urlopen(request, timeout=10):
                 return
         except OSError as exc:
             last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(min(2 ** attempt, 8))
     raise RuntimeError(f"alert webhook failed: {last_error}")

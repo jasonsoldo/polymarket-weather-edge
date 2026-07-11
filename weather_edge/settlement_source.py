@@ -5,6 +5,7 @@ from datetime import date
 from typing import Optional
 
 from .http_client import get_json
+from .official_sources import extract_observation
 from .settlement_rules import SettlementRule
 from .settlement_sources.wunderground import fetch_wunderground_api
 from .settlement_sources.wunderground_browser import fetch_wunderground_browser
@@ -102,21 +103,27 @@ def _fetch_configured_official(rule: SettlementRule) -> SettlementSourceResult:
     endpoint = os.getenv(f"{prefix}_SETTLEMENT_URL", "")
     key = os.getenv(f"{prefix}_API_KEY", "")
     if not endpoint or not key:
-        return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "official adapter requires API key and settlement URL")
+        return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "official endpoint and API key are required")
+    endpoint = endpoint.replace("{date}", rule.date).replace("{station}", rule.target_station_or_data_source).replace("{city}", rule.city)
+    params = {"station": rule.target_station_or_data_source, "date": rule.date, "target_date": rule.date}
+    headers = {"User-Agent": "WeatherEdge/1.0"}
+    if prefix == "METOFFICE":
+        headers["apikey"] = key
+    else:
+        params["apiKey"] = key
     try:
-        endpoint = endpoint.replace("{date}", rule.date).replace("{station}", rule.target_station_or_data_source).replace("{city}", rule.city)
-        params = {"station": rule.target_station_or_data_source, "date": rule.date, "target_date": rule.date}
-        headers = {}
-        if prefix == "METOFFICE":
-            headers["apikey"] = key
-        else:
-            params["apiKey"] = key
         payload = get_json(endpoint, params, headers=headers)
-        maximum, minimum, observed_at = _extract_extremes(payload)
+        maximum, minimum, observed_at, response_date, response_station, response_unit = extract_observation(payload)
+        if response_date and not str(response_date).startswith(rule.date):
+            return SettlementSourceResult("source_mismatch", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, str(observed_at or ""), "response date does not match target date")
+        if response_station and str(response_station).upper() != rule.target_station_or_data_source.upper():
+            return SettlementSourceResult("source_mismatch", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, str(observed_at or ""), "response station does not match target station")
+        if response_unit and response_unit.upper().replace("°", "")[0] != rule.measurement_unit.upper().replace("°", "")[0]:
+            return SettlementSourceResult("source_mismatch", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, str(observed_at or ""), "response unit does not match requested unit")
         if maximum is None and minimum is None:
             return SettlementSourceResult("unavailable", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", f"{prefix} response contained no temperature extremes")
-        return SettlementSourceResult("available", rule.settlement_source, rule.target_station_or_data_source, rule.date, maximum, minimum, rule.measurement_unit, observed_at or rule.date, f"official {prefix} configured adapter")
-    except RuntimeError as exc:
+        return SettlementSourceResult("available", rule.settlement_source, rule.target_station_or_data_source, rule.date, maximum, minimum, rule.measurement_unit, str(observed_at or rule.date), f"official {prefix} configured adapter")
+    except (RuntimeError, TypeError, ValueError) as exc:
         return SettlementSourceResult("unavailable", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", str(exc))
 
 
@@ -176,18 +183,24 @@ def _hko_daily_value(data_type: str, params: dict, target_date: str) -> Optional
 
 
 def _fetch_nws(rule: SettlementRule) -> SettlementSourceResult:
-    station = rule.target_station_or_data_source.upper()
-    if not station.startswith("K"):
-        return SettlementSourceResult("unavailable", rule.settlement_source, station, rule.date, None, None, rule.measurement_unit, "", "NWS station identifier is required")
-    payload = get_json(f"{NWS_API}/stations/{station}/observations", {"start": f"{rule.date}T00:00:00+00:00", "end": f"{rule.date}T23:59:59+00:00"})
-    values = []
+    stations = [item.strip().upper() for item in rule.target_station_or_data_source.replace("|", ",").split(",") if item.strip()]
+    if not stations or any(not station.startswith("K") for station in stations):
+        return SettlementSourceResult("unavailable", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "NWS station identifier is required")
+    all_values = []
     observed_at = ""
-    for feature in payload.get("features") or []:
-        properties = feature.get("properties") or {}
-        value = ((properties.get("temperature") or {}).get("value"))
-        if value is not None:
-            values.append(float(value))
-            observed_at = str(properties.get("timestamp") or observed_at)
-    if not values:
-        return SettlementSourceResult("unavailable", rule.settlement_source, station, rule.date, None, None, "C", "", "official NWS observations unavailable")
-    return SettlementSourceResult("available", rule.settlement_source, station, rule.date, max(values), min(values), "C", observed_at, "official NWS observations")
+    for station in stations:
+        try:
+            payload = get_json(f"{NWS_API}/stations/{station}/observations", {"start": f"{rule.date}T00:00:00+00:00", "end": f"{rule.date}T23:59:59+00:00"})
+        except RuntimeError as exc:
+            return SettlementSourceResult("unavailable", rule.settlement_source, ",".join(stations), rule.date, None, None, "C", "", f"NWS {station} request failed: {exc}")
+        values = []
+        for feature in payload.get("features") or []:
+            properties = feature.get("properties") or {}
+            value = ((properties.get("temperature") or {}).get("value"))
+            if value is not None:
+                values.append(float(value))
+                observed_at = str(properties.get("timestamp") or observed_at)
+        if not values:
+            return SettlementSourceResult("unavailable", rule.settlement_source, ",".join(stations), rule.date, None, None, "C", "", f"official NWS observations unavailable for {station}")
+        all_values.extend(values)
+    return SettlementSourceResult("available", rule.settlement_source, ",".join(stations), rule.date, max(all_values), min(all_values), "C", observed_at, "official NWS observations; all requested stations returned data")

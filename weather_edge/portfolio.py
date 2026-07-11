@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 
 from .orderbook import BookSummary, fetch_book_summary
 from .position_manager import Position, load_positions
+from .accounting import realized_pnl
 
 
 @dataclass(frozen=True)
@@ -31,7 +32,7 @@ def value_positions(positions: list[Position], books: dict[str, BookSummary]) ->
     return rows
 
 
-def portfolio_snapshot(positions_db: str) -> dict:
+def portfolio_snapshot(positions_db: str, orders_db: str = "data/orders.sqlite") -> dict:
     positions = load_positions(positions_db)
     books = {}
     for position in positions:
@@ -45,5 +46,7 @@ def portfolio_snapshot(positions_db: str) -> dict:
         "cost_basis": sum(row.cost_basis for row in rows),
         "market_value": sum(row.market_value for row in rows),
         "unrealized_pnl": sum(row.unrealized_pnl for row in rows),
+        "realized_pnl": realized_pnl(orders_db),
+        "total_pnl": realized_pnl(orders_db) + sum(row.unrealized_pnl for row in rows),
         "stale_positions": sum(1 for row in rows if row.stale),
     }

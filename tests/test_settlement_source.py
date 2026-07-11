@@ -24,6 +24,15 @@ class SettlementSourceTests(unittest.TestCase):
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
+
+    def test_nws_requires_data_from_all_requested_stations(self):
+        rule = _rule("NWS", "KNYC,KLGA", "2020-07-10")
+        payload = {"features": [{"properties": {"temperature": {"value": 30}, "timestamp": "2020-07-10T12:00:00Z"}}]}
+        with patch("weather_edge.settlement_source.get_json", side_effect=[payload, payload]):
+            result = fetch_settlement_observation(rule)
+        self.assertEqual(result.status, "available")
+        self.assertEqual(result.max_temp, 30.0)
+        self.assertEqual(result.station, "KNYC,KLGA")
     def test_wunderground_requires_adapter_before_verification(self):
         rule = _rule("Wunderground", "EGLC", "2020-07-10")
 

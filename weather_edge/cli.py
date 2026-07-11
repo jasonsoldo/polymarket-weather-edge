@@ -39,6 +39,18 @@ def main(argv=None) -> int:
     backtest_parser.add_argument("--file", required=True)
     backtest_parser.add_argument("--config")
 
+    validation_parser = sub.add_parser("validate-history")
+    validation_parser.add_argument("--file", required=True)
+    validation_parser.add_argument("--min-days", type=int, default=30)
+    validation_parser.add_argument("--min-exact-match-rate", type=float, default=0.90)
+    validation_parser.add_argument("--max-missing-rate", type=float, default=0.10)
+    validation_parser.add_argument("--min-bucket-match-rate", type=float, default=0.90)
+
+    backfill_parser = sub.add_parser("settlement-backfill")
+    backfill_parser.add_argument("--input", required=True)
+    backfill_parser.add_argument("--resolutions", required=True)
+    backfill_parser.add_argument("--output", required=True)
+
     markets_parser = sub.add_parser("live-markets")
     markets_parser.add_argument("--city", default="")
     markets_parser.add_argument("--limit", type=int, default=100)
@@ -263,6 +275,21 @@ def main(argv=None) -> int:
         print(json.dumps({"summary": asdict(summary), "results": results}, indent=2))
         return 0
 
+    if args.command == "validate-history":
+        from .historical_validation import load_jsonl, validate_history
+
+        result = validate_history(load_jsonl(args.file), args.min_days, args.min_exact_match_rate, args.max_missing_rate, args.min_bucket_match_rate)
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.verified else 2
+
+    if args.command == "settlement-backfill":
+        from .settlement_backfill import backfill_resolutions, read_jsonl, write_jsonl
+
+        rows = backfill_resolutions(read_jsonl(args.input), read_jsonl(args.resolutions))
+        write_jsonl(args.output, rows)
+        print(json.dumps({"input": args.input, "resolutions": args.resolutions, "output": args.output, "rows": len(rows), "backfilled": sum(bool(row.get("resolution_backfilled")) for row in rows)}, indent=2))
+        return 0
+
     if args.command == "live-markets":
         from .market_scanner import fetch_weather_markets, get_last_scan_stats
 
@@ -483,6 +510,22 @@ def _dry_run_summary(payload: dict) -> dict:
                 "reasons": candidate.get("not_executable_reasons", []),
             } if candidate else None,
         })
+    event_reasons = []
+    event_blocked = False
+    for event in events:
+        if event.get("action") == "block_new_position":
+            event_blocked = True
+        for reason in event.get("reasons", []):
+            if reason not in event_reasons:
+                event_reasons.append(reason)
+    if event_blocked:
+        recommended_action = "NO_TRADE"
+        blocked_by = payload.get("blocked_by") or "event_risk"
+        risk_reasons = ["NO_TRADE", *event_reasons]
+    else:
+        recommended_action = payload.get("recommended_action") or ("WATCH" if events else "NO_TRADE")
+        blocked_by = payload.get("blocked_by")
+        risk_reasons = payload.get("risk_reasons", [])
     return {
         "mode": payload.get("mode"),
         "city": payload.get("city"),
@@ -494,9 +537,9 @@ def _dry_run_summary(payload: dict) -> dict:
         },
         "markets_found": payload.get("markets_found", 0),
         "events": events,
-        "recommended_action": payload.get("recommended_action", "NO_TRADE"),
-        "blocked_by": payload.get("blocked_by"),
-        "risk_reasons": payload.get("risk_reasons", []),
+        "recommended_action": recommended_action,
+        "blocked_by": blocked_by,
+        "risk_reasons": risk_reasons,
         "safety": payload.get("safety", []),
     }
 
