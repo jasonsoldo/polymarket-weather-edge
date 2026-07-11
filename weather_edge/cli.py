@@ -74,6 +74,13 @@ def main(argv=None) -> int:
     hko_finalize_parser.add_argument("--orders-db", default="data/orders.sqlite")
     hko_finalize_parser.add_argument("--pages", type=int, default=5)
 
+    hko_recent_parser = sub.add_parser("hko-finalize-recent")
+    hko_recent_parser.add_argument("--lookback-days", type=int, default=45)
+    hko_recent_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    hko_recent_parser.add_argument("--positions-db", default="data/positions.sqlite")
+    hko_recent_parser.add_argument("--orders-db", default="data/orders.sqlite")
+    hko_recent_parser.add_argument("--pages", type=int, default=5)
+
     history_parser = sub.add_parser("history-summary")
     history_parser.add_argument("--db", default="data/market_history.sqlite")
 
@@ -336,6 +343,12 @@ def main(argv=None) -> int:
         from .hko_finalizer import finalize_hko_day
 
         print(json.dumps(finalize_hko_day(args.date, args.history_db, args.positions_db, args.orders_db, args.pages), indent=2))
+        return 0
+
+    if args.command == "hko-finalize-recent":
+        from .hko_finalizer import finalize_hko_recent
+
+        print(json.dumps(finalize_hko_recent(args.lookback_days, args.history_db, args.positions_db, args.orders_db, args.pages), indent=2))
         return 0
 
     if args.command == "hko-backfill-polymarket":

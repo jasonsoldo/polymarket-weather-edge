@@ -2,7 +2,7 @@
 Description=Run WeatherEdge Hong Kong finalizer every day
 
 [Timer]
-OnCalendar=*-*-* 03:30:00 UTC
+OnCalendar=*-*-* 08:30:00 UTC
 Persistent=true
 Unit=weather-edge-hko-finalizer.service
 

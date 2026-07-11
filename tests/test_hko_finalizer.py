@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from weather_edge.accounting import realized_pnl
-from weather_edge.hko_finalizer import finalize_hko_day, hko_closure_status
+from weather_edge.hko_finalizer import finalize_hko_day, finalize_hko_recent, hko_closure_status
 from weather_edge.order_store import StoredOrder, save_order
 from weather_edge.position_manager import Position, load_positions, upsert_position
 from weather_edge.settlement_source import SettlementSourceResult
@@ -79,6 +79,16 @@ class HkoFinalizerTests(unittest.TestCase):
             self.assertEqual(result["markets_resolved"], 0)
             self.assertEqual(result["positions_settled"], 0)
             self.assertEqual(len(load_positions(positions_db)), 1)
+
+    def test_recent_finalizer_retries_delayed_days(self):
+        with patch("weather_edge.hko_finalizer.yesterday_hong_kong", return_value="2026-07-10"), patch(
+            "weather_edge.hko_finalizer.finalize_hko_day",
+            side_effect=lambda day, *_args: {"target_date": day, "status": "finalized" if day == "2026-07-09" else "unavailable", "markets_resolved": 1 if day == "2026-07-09" else 0, "positions_settled": 0, "realized_pnl": 0.0},
+        ):
+            result = finalize_hko_recent(3, "history.sqlite", "positions.sqlite", "orders.sqlite")
+        self.assertEqual(result["available_days"], 1)
+        self.assertEqual(result["pending_days"], 2)
+        self.assertEqual([item["target_date"] for item in result["results"]], ["2026-07-10", "2026-07-09", "2026-07-08"])
 
 
 if __name__ == "__main__":
