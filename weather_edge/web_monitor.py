@@ -23,8 +23,13 @@ def read_recent_snapshots(log_path: str, limit: int = 20) -> list[dict]:
 
 def render_dashboard(snapshot: dict, history: list[dict]) -> str:
     if snapshot.get("mode") == "all_cities":
-        return _render_terminal_dashboard(snapshot, history)
-    return _render_overview(snapshot, history, "WeatherEdge Monitor") + _compatibility_summary(snapshot)
+        return _apply_eye_comfort(_render_terminal_dashboard(snapshot, history))
+    return _apply_eye_comfort(_render_overview(snapshot, history, "WeatherEdge Monitor") + _compatibility_summary(snapshot))
+
+
+def _apply_eye_comfort(document: str) -> str:
+    theme = """<style>:root{--bg:#edf4ee;--panel:#f8fbf7;--ink:#20352b;--muted:#66786d;--line:#cad8ce;--blue:#35705a;--green:#287a55;--red:#ad4a52;--amber:#9a6b2f}body{background:var(--bg)!important;color:var(--ink)!important}.panel,.hero,.kpi,.card,.metric-card,.status-bar,.profile-card,.table-wrap{background:var(--panel)!important;border-color:var(--line)!important}aside.rail,.app>aside{background:#253b31!important}nav a{color:#8fa79a!important}nav a.active,nav a:hover{background:#365348!important;color:#f4f8f4!important}table th{background:#e4eee6!important;color:#40594b!important}table td,.item,.risk-row,.city-strip{border-color:#d8e3da!important}.model,.section-title a,.panel-head a{color:var(--blue)!important}</style>"""
+    return document.replace("</head>", theme + "</head>", 1)
 
 
 def _render_terminal_dashboard(snapshot: dict, history: list[dict]) -> str:
@@ -295,7 +300,7 @@ def render_module_page(snapshot: dict, path: str, history: list[dict]) -> str:
         return render_dashboard(snapshot, history)
     title = {"hong_kong":"Hong Kong", "cities":"Cities", "markets":"Markets", "weather":"Weather Sources", "settlement":"Settlement Sources", "candidates":"Candidates", "positions":"Positions", "risk":"Risk", "alerts":"Alerts", "logs":"Logs", "settings":"Settings"}.get(module, module.title())
     cards = _module_rows(snapshot, module, history)
-    return _module_shell(title, snapshot, cards)
+    return _apply_eye_comfort(_module_shell(title, snapshot, cards))
 
 def _module_shell(title, snapshot, body):
     nav = " ".join(f"<a href='{path}'>{label}</a>" for path, label in (("/overview","Overview"),("/hong-kong","Hong Kong"),("/cities","Cities"),("/markets","Markets"),("/weather-sources","Weather Sources"),("/settlement-sources","Settlement Sources"),("/candidates","Candidates"),("/positions","Positions"),("/risk","Risk"),("/alerts","Alerts"),("/logs","Logs"),("/settings","Settings")))
@@ -394,7 +399,7 @@ def _weather_module(cities):
 
 
 def render_all_cities_dashboard(snapshot: dict, history: list[dict]) -> str:
-    return _render_monitor(snapshot, "WeatherEdge All Cities Monitor")
+    return _apply_eye_comfort(_render_monitor(snapshot, "WeatherEdge All Cities Monitor"))
 
 
 def _render_monitor(snapshot: dict, title: str) -> str:

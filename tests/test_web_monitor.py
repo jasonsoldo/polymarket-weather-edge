@@ -6,6 +6,13 @@ from weather_edge.web_monitor import read_recent_snapshots, render_dashboard, re
 
 
 class WebMonitorTests(unittest.TestCase):
+    def test_dashboard_uses_eye_comfort_palette(self):
+        snapshot = {"city": "Hong Kong", "recommended_action": "NO_TRADE", "markets": [], "markets_found": 0, "weather": {}}
+        html = render_dashboard(snapshot, [])
+        self.assertIn("--bg:#edf4ee", html)
+        self.assertIn("--panel:#f8fbf7", html)
+        self.assertIn("--ink:#20352b", html)
+
     def test_read_recent_snapshots_reads_jsonl_tail(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "live_monitor.jsonl"
