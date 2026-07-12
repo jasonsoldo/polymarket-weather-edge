@@ -181,6 +181,8 @@ def _finalize_shadow_decisions(conn: sqlite3.Connection, target_date: str, recor
             cost += size * float(order.get("price") or 0)
             payout += size if resolved == "Yes" else 0.0
             used[market_id] = resolved
+        if not used:
+            continue
         conn.execute(
             "UPDATE shadow_decisions SET final_market_result = ?, hypothetical_realized_pnl = ?, finalized_at = ? WHERE decision_id = ?",
             (json.dumps(used, sort_keys=True), payout - cost, finalized_at, decision_id),

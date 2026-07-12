@@ -150,7 +150,9 @@ def _save_city_snapshot(conn, snapshot: dict, fallback_observed_at: str) -> None
             )
         if event.get("settlement_observation"):
             _insert_settlement(conn, observed_at, city, target_date, event["settlement_observation"])
-        if city == "Hong Kong" and (plan.get("settlement_rule") or {}).get("market_type") in {"max_temp", "highest_temperature"}:
+        rule = plan.get("settlement_rule") or {}
+        source = str(rule.get("settlement_source") or "").lower()
+        if (city == "Hong Kong" or (city == "New York" and any(name in source for name in ("nws", "national weather service", "noaa")))) and rule.get("market_type") in {"max_temp", "highest_temperature"}:
             _insert_shadow_decision(conn, observed_at, target_date, event, plan, snapshot.get("weather") or {})
 
 

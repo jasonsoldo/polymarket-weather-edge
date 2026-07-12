@@ -10,7 +10,7 @@ from .settlement_rules import SettlementRule
 from .settlement_source import fetch_settlement_observation
 
 
-def collect_nws_history(start_date: str, end_date: str, output: str, city: str = "New York", station: str = "KNYC", timezone: str = "America/New_York", unit: str = "F", interval: float = 0.2, history_db: str = "") -> dict:
+def collect_nws_history(start_date: str, end_date: str, output: str, city: str = "New York", station: str = "KLGA", timezone: str = "America/New_York", unit: str = "F", interval: float = 0.2, history_db: str = "") -> dict:
     start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
     if end < start:
         raise ValueError("end date must not be earlier than start date")

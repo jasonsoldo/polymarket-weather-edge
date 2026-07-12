@@ -62,7 +62,7 @@ def main(argv=None) -> int:
     nws_history_parser.add_argument("--start-date", required=True)
     nws_history_parser.add_argument("--end-date", required=True)
     nws_history_parser.add_argument("--city", default="New York")
-    nws_history_parser.add_argument("--station", default="KNYC")
+    nws_history_parser.add_argument("--station", default="KLGA")
     nws_history_parser.add_argument("--timezone", default="America/New_York")
     nws_history_parser.add_argument("--unit", choices=("C", "F"), default="F")
     nws_history_parser.add_argument("--output", default="data/validation/nws_new_york.jsonl")
@@ -91,6 +91,18 @@ def main(argv=None) -> int:
     hko_recent_parser.add_argument("--positions-db", default="data/positions.sqlite")
     hko_recent_parser.add_argument("--orders-db", default="data/orders.sqlite")
     hko_recent_parser.add_argument("--pages", type=int, default=5)
+
+    nws_finalize_parser = sub.add_parser("nws-finalize-day")
+    nws_finalize_parser.add_argument("--date", default="yesterday")
+    nws_finalize_parser.add_argument("--station", default="KLGA")
+    nws_finalize_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    nws_finalize_parser.add_argument("--pages", type=int, default=5)
+
+    nws_status_parser = sub.add_parser("nws-closure-status")
+    nws_status_parser.add_argument("--station", default="KLGA")
+    nws_status_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    nws_status_parser.add_argument("--min-days", type=int, default=30)
+    nws_status_parser.add_argument("--min-match-rate", type=float, default=0.90)
 
     history_parser = sub.add_parser("history-summary")
     history_parser.add_argument("--db", default="data/market_history.sqlite")
@@ -368,6 +380,19 @@ def main(argv=None) -> int:
 
         print(json.dumps(finalize_hko_recent(args.lookback_days, args.history_db, args.positions_db, args.orders_db, args.pages, progress=True), indent=2))
         return 0
+
+    if args.command == "nws-finalize-day":
+        from .nws_finalizer import finalize_nws_day
+
+        print(json.dumps(finalize_nws_day(args.date, args.history_db, args.station, args.pages), indent=2))
+        return 0
+
+    if args.command == "nws-closure-status":
+        from .nws_finalizer import nws_closure_status
+
+        result = nws_closure_status(args.history_db, args.station, args.min_days, args.min_match_rate)
+        print(json.dumps(result, indent=2))
+        return 0 if result["station_verified"] else 2
 
     if args.command == "hko-backfill-polymarket":
         from .hko_polymarket_backfill import backfill_hko_polymarket
