@@ -6,7 +6,7 @@ from unittest.mock import patch
 from weather_edge.market_scanner import discover_weather_tags, fetch_weather_markets
 from weather_edge.city_registry import match_city
 from weather_edge.orderbook import fetch_book_summary
-from weather_edge.weather_sources import fetch_configured_forecast, fetch_hko_forecast, fetch_weather_snapshot
+from weather_edge.weather_sources import DailyForecast, fetch_configured_forecast, fetch_hko_forecast, fetch_weather_snapshot
 
 
 class LiveDataSourceParsingTests(unittest.TestCase):
@@ -348,3 +348,18 @@ class LiveDataSourceParsingTests(unittest.TestCase):
 
         self.assertEqual(snapshot.hko_observation["max_temp_since_midnight"], 33.8)
         self.assertFalse(snapshot.hko_observation["is_final"])
+
+    def test_healthy_hko_observation_counts_as_official_current_day_evidence(self):
+        observation = SimpleNamespace(to_dict=lambda: {"current_temp": 31.4, "max_temp_since_midnight": 33.8, "healthy": True, "is_final": False})
+        open_meteo = DailyForecast("open_meteo", "2026-07-12", 32.8, 27.3, "C", "now", "grid", "Asia/Hong_Kong", "best_match", "grid")
+        with patch("weather_edge.weather_sources.fetch_open_meteo", return_value=open_meteo), patch(
+            "weather_edge.weather_sources.fetch_hko_forecast", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_hko_realtime", return_value=observation), patch(
+            "weather_edge.weather_sources.fetch_nws", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_weatherapi", return_value=None), patch(
+            "weather_edge.weather_sources.fetch_accuweather", return_value=None
+        ), patch("weather_edge.weather_sources.fetch_metoffice", return_value=None), patch(
+            "weather_edge.weather_sources._configured_provider_for_city", return_value=[]
+        ):
+            snapshot = fetch_weather_snapshot("Hong Kong", 22.3193, 114.1694, "2026-07-12", "celsius")
+        self.assertEqual(snapshot.confidence, 0.85)

@@ -642,7 +642,7 @@ def _monitor_rows(snapshot: dict) -> list[dict]:
                     "action": (plan.get("decision") or {}).get("recommended_action", city_snapshot.get("recommended_action", "")),
                     "source_state": observation.get("status", plan.get("settlement_source_status", "")),
                     "normalized_city": city_snapshot.get("normalized_city", city_snapshot.get("city", "")),
-                    "station_code": market.get("station_code", ""),
+                    "station_code": market.get("station_code") or rule.get("target_station_or_data_source", ""),
                     "registry_status": market.get("city_registry_status", city_snapshot.get("city_registry_status", "")),
                     "block_reason": " | ".join((plan.get("decision") or {}).get("reasons", [])) or city_snapshot.get("block_reason", ""),
                 }

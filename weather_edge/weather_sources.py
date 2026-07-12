@@ -108,7 +108,8 @@ def fetch_weather_snapshot(
     if len(min_values) >= 2:
         spreads.append(max(min_values) - min(min_values))
     disagreement = max(spreads) if spreads else None
-    confidence = _confidence(len(forecasts), disagreement)
+    healthy_hko_observation = bool(hko_observation and hko_observation.get("healthy"))
+    confidence = _confidence(len(forecasts) + int(healthy_hko_observation), disagreement)
     return WeatherSnapshot(
         city=city,
         latitude=latitude,
