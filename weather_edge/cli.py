@@ -58,6 +58,17 @@ def main(argv=None) -> int:
     hko_history_parser.add_argument("--interval", type=float, default=0.2)
     hko_history_parser.add_argument("--history-db", default="")
 
+    nws_history_parser = sub.add_parser("nws-collect-history")
+    nws_history_parser.add_argument("--start-date", required=True)
+    nws_history_parser.add_argument("--end-date", required=True)
+    nws_history_parser.add_argument("--city", default="New York")
+    nws_history_parser.add_argument("--station", default="KNYC")
+    nws_history_parser.add_argument("--timezone", default="America/New_York")
+    nws_history_parser.add_argument("--unit", choices=("C", "F"), default="F")
+    nws_history_parser.add_argument("--output", default="data/validation/nws_new_york.jsonl")
+    nws_history_parser.add_argument("--interval", type=float, default=0.2)
+    nws_history_parser.add_argument("--history-db", default="")
+
     hko_import_parser = sub.add_parser("hko-import-history")
     hko_import_parser.add_argument("--input", required=True)
     hko_import_parser.add_argument("--history-db", default="data/market_history.sqlite")
@@ -330,6 +341,13 @@ def main(argv=None) -> int:
         from .hko_history import collect_hko_history
 
         result = collect_hko_history(args.start_date, args.end_date, args.output, args.interval, args.history_db)
+        print(json.dumps(result, indent=2))
+        return 0 if result["failed"] == 0 else 2
+
+    if args.command == "nws-collect-history":
+        from .nws_history import collect_nws_history
+
+        result = collect_nws_history(args.start_date, args.end_date, args.output, args.city, args.station, args.timezone, args.unit, args.interval, args.history_db)
         print(json.dumps(result, indent=2))
         return 0 if result["failed"] == 0 else 2
 

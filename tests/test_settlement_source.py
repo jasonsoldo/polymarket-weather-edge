@@ -3,7 +3,7 @@ import os
 from unittest.mock import patch
 
 from weather_edge.settlement_rules import SettlementRule
-from weather_edge.settlement_source import _hko_date_matches, _hko_row_matches, fetch_settlement_observation, settlement_source_capability
+from weather_edge.settlement_source import _hko_date_matches, _hko_row_matches, _nws_utc_day_window, fetch_settlement_observation, settlement_source_capability
 
 
 class SettlementSourceTests(unittest.TestCase):
@@ -85,6 +85,31 @@ class SettlementSourceTests(unittest.TestCase):
         self.assertEqual(result.status, "available")
         self.assertEqual(result.max_temp, 25.0)
         self.assertEqual(result.min_temp, 20.0)
+
+    def test_nws_uses_market_local_calendar_day(self):
+        start, end = _nws_utc_day_window("2020-07-10", "America/New_York")
+        self.assertEqual(start, "2020-07-10T04:00:00+00:00")
+        self.assertEqual(end, "2020-07-11T03:59:59.999999+00:00")
+
+    def test_nws_converts_observations_to_market_unit(self):
+        rule = SettlementRule("New York", "2020-07-10", "max_temp", "NWS", "F", "America/New_York", "KNYC", "nearest_integer", 1.0, (), ())
+        payload = {"features": [
+            {"properties": {"temperature": {"value": 20.0}, "timestamp": "2020-07-10T12:00:00Z"}},
+            {"properties": {"temperature": {"value": 25.0}, "timestamp": "2020-07-10T18:00:00Z"}},
+        ]}
+        with patch("weather_edge.settlement_source.get_json", return_value=payload) as request:
+            result = fetch_settlement_observation(rule)
+
+        self.assertEqual(result.unit, "F")
+        self.assertEqual(result.max_temp, 77.0)
+        self.assertEqual(result.min_temp, 68.0)
+        self.assertEqual(request.call_args.args[1]["start"], "2020-07-10T04:00:00+00:00")
+
+    def test_nws_is_pending_until_station_validation(self):
+        rule = SettlementRule("New York", "2020-07-10", "max_temp", "NWS", "F", "America/New_York", "KNYC", "nearest_integer", 1.0, (), ())
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("NWS_SETTLEMENT_VERIFIED_STATIONS", None)
+            self.assertEqual(settlement_source_capability(rule), "pending_nws_settlement_validation")
 
 
 def _rule(source, station, target_date):

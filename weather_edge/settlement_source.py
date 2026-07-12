@@ -1,8 +1,9 @@
 import os
 import json
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .http_client import get_json
 from .official_sources import extract_observation
@@ -40,7 +41,9 @@ def settlement_source_capability(rule: SettlementRule) -> str:
     if "hong kong observatory" in source:
         return "official_source_verified" if os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true" else "pending_hko_settlement_validation"
     if "nws" in source or "national weather service" in source or "noaa" in source:
-        return "supported_official"
+        verified = {item.strip().upper() for item in os.getenv("NWS_SETTLEMENT_VERIFIED_STATIONS", "").split(",") if item.strip()}
+        stations = {item.strip().upper() for item in rule.target_station_or_data_source.replace("|", ",").split(",") if item.strip()}
+        return "official_source_verified" if stations and stations <= verified else "pending_nws_settlement_validation"
     if "wunderground" in source or "weather underground" in source:
         verified = _verified_wu_stations()
         return "wu_verified" if rule.target_station_or_data_source.upper() in verified else ("wu_api_supported" if os.getenv("WU_API_KEY") and os.getenv("WU_API_URL") else "pending_wu_adapter")
@@ -67,6 +70,10 @@ def fetch_settlement_observation(rule: SettlementRule) -> SettlementSourceResult
         if rule.date >= date.today().isoformat():
             return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "settlement day is not complete")
         return _fetch_hko(rule)
+    if any(name in rule.settlement_source.lower() for name in ("nws", "national weather service", "noaa")):
+        if rule.date >= date.today().isoformat():
+            return SettlementSourceResult("pending", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "settlement day is not complete")
+        return _fetch_nws(rule)
     if capability != "supported_official":
         return SettlementSourceResult(capability, rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "official adapter unavailable")
     if rule.date >= date.today().isoformat():
@@ -216,11 +223,15 @@ def _fetch_nws(rule: SettlementRule) -> SettlementSourceResult:
         return SettlementSourceResult("unavailable", rule.settlement_source, rule.target_station_or_data_source, rule.date, None, None, rule.measurement_unit, "", "NWS station identifier is required")
     all_values = []
     observed_at = ""
+    try:
+        start, end = _nws_utc_day_window(rule.date, rule.timezone)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        return SettlementSourceResult("unavailable", rule.settlement_source, ",".join(stations), rule.date, None, None, rule.measurement_unit, "", f"invalid NWS target date or timezone: {exc}")
     for station in stations:
         try:
-            payload = get_json(f"{NWS_API}/stations/{station}/observations", {"start": f"{rule.date}T00:00:00+00:00", "end": f"{rule.date}T23:59:59+00:00"})
+            payload = get_json(f"{NWS_API}/stations/{station}/observations", {"start": start, "end": end})
         except RuntimeError as exc:
-            return SettlementSourceResult("unavailable", rule.settlement_source, ",".join(stations), rule.date, None, None, "C", "", f"NWS {station} request failed: {exc}")
+            return SettlementSourceResult("unavailable", rule.settlement_source, ",".join(stations), rule.date, None, None, rule.measurement_unit, "", f"NWS {station} request failed: {exc}")
         values = []
         for feature in payload.get("features") or []:
             properties = feature.get("properties") or {}
@@ -229,6 +240,17 @@ def _fetch_nws(rule: SettlementRule) -> SettlementSourceResult:
                 values.append(float(value))
                 observed_at = str(properties.get("timestamp") or observed_at)
         if not values:
-            return SettlementSourceResult("unavailable", rule.settlement_source, ",".join(stations), rule.date, None, None, "C", "", f"official NWS observations unavailable for {station}")
+            return SettlementSourceResult("unavailable", rule.settlement_source, ",".join(stations), rule.date, None, None, rule.measurement_unit, "", f"official NWS observations unavailable for {station}")
         all_values.extend(values)
-    return SettlementSourceResult("available", rule.settlement_source, ",".join(stations), rule.date, max(all_values), min(all_values), "C", observed_at, "official NWS observations; all requested stations returned data")
+    maximum, minimum = max(all_values), min(all_values)
+    if rule.measurement_unit.upper().replace("°", "") == "F":
+        maximum, minimum = maximum * 9 / 5 + 32, minimum * 9 / 5 + 32
+    return SettlementSourceResult("available", rule.settlement_source, ",".join(stations), rule.date, maximum, minimum, rule.measurement_unit, observed_at, "official NWS observations; all requested stations returned data for the local calendar day")
+
+
+def _nws_utc_day_window(target_date: str, timezone_name: str) -> tuple[str, str]:
+    local_zone = ZoneInfo(timezone_name)
+    local_day = date.fromisoformat(target_date)
+    start = datetime.combine(local_day, time.min, local_zone).astimezone(timezone.utc)
+    end = (datetime.combine(local_day + timedelta(days=1), time.min, local_zone) - timedelta(microseconds=1)).astimezone(timezone.utc)
+    return start.isoformat(), end.isoformat()
