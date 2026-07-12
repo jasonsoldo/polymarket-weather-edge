@@ -92,6 +92,10 @@ def main(argv=None) -> int:
     hko_recent_parser.add_argument("--orders-db", default="data/orders.sqlite")
     hko_recent_parser.add_argument("--pages", type=int, default=5)
 
+    hko_status_parser = sub.add_parser("hko-readiness")
+    hko_status_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    hko_status_parser.add_argument("--orders-db", default="data/orders.sqlite")
+
     nws_finalize_parser = sub.add_parser("nws-finalize-day")
     nws_finalize_parser.add_argument("--date", default="yesterday")
     nws_finalize_parser.add_argument("--station", default="KLGA")
@@ -380,6 +384,15 @@ def main(argv=None) -> int:
 
         print(json.dumps(finalize_hko_recent(args.lookback_days, args.history_db, args.positions_db, args.orders_db, args.pages, progress=True), indent=2))
         return 0
+
+    if args.command == "hko-readiness":
+        from .hko_finalizer import hko_closure_status
+
+        result = hko_closure_status(args.history_db, args.orders_db)
+        result["recommended_action"] = "TRADE_CANDIDATE" if result["settlement_verified"] else "NO_TRADE"
+        result["block_reason"] = "" if result["settlement_verified"] else "pending_hko_settlement_validation"
+        print(json.dumps(result, indent=2))
+        return 0 if result["settlement_verified"] else 2
 
     if args.command == "nws-finalize-day":
         from .nws_finalizer import finalize_nws_day

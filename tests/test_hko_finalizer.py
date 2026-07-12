@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from weather_edge.accounting import realized_pnl
-from weather_edge.hko_finalizer import finalize_hko_day, finalize_hko_recent, hko_closure_status
+from weather_edge.hko_finalizer import _hko_day_complete, finalize_hko_day, finalize_hko_recent, hko_closure_status
 from weather_edge.history_store import save_monitor_snapshot
 from weather_edge.order_store import StoredOrder, save_order
 from weather_edge.position_manager import Position, load_positions, upsert_position
@@ -54,6 +54,7 @@ class HkoFinalizerTests(unittest.TestCase):
             closure = hko_closure_status(history_db, orders_db)
             self.assertTrue(closure["settlement_audit_passed"])
             self.assertFalse(closure["settlement_verified"])
+            self.assertEqual(closure["official_data_days"], 1)
             self.assertEqual(closure["audit_days"], 1)
             self.assertEqual(closure["final_daily_max"], 31.0)
             self.assertAlmostEqual(closure["shadow_realized_pnl"], 0.6)
@@ -64,6 +65,19 @@ class HkoFinalizerTests(unittest.TestCase):
             with closing(sqlite3.connect(history_db)) as conn:
                 row = conn.execute("SELECT expected_outcome, resolved_outcome, settlement_match FROM hko_market_resolutions").fetchone()
             self.assertEqual(row, ("Yes", "Yes", 1))
+
+    def test_closure_excludes_non_hong_kong_shadow_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            history_db = str(Path(tmp) / "history.sqlite")
+            orders_db = str(Path(tmp) / "orders.sqlite")
+            save_monitor_snapshot(history_db, {
+                "observed_at": "2026-07-10T00:00:00Z", "city": "New York", "target_date": "2026-07-10", "weather": {},
+                "markets": [{"event_id": "ny", "event_slug": "highest-temperature-in-new-york", "markets": [{"question": "Highest temperature in New York"}], "event_bucket_plan": {
+                    "settlement_rule": {"market_type": "max_temp", "settlement_source": "NWS"}, "decision": {"recommended_action": "block_new_position", "reasons": []}, "orders": [], "curve": {}
+                }}],
+            })
+            closure = hko_closure_status(history_db, orders_db)
+        self.assertEqual(closure["shadow_samples"], 0)
 
     def test_does_not_settle_non_dry_run_position(self):
         observation = SettlementSourceResult("available", "Hong Kong Observatory", "HKO", "2026-07-10", 31.0, 26.0, "C", "2026-07-11", "official HKO open data")
@@ -114,6 +128,16 @@ class HkoFinalizerTests(unittest.TestCase):
         ), redirect_stderr(output):
             finalize_hko_recent(1, "history.sqlite", "positions.sqlite", "orders.sqlite", progress=True)
         self.assertIn("[1/1] 2026-07-10 unavailable", output.getvalue())
+
+    def test_hourly_retry_skips_completed_day_without_pending_shadow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            history_db = str(Path(tmp) / "history.sqlite")
+            with closing(sqlite3.connect(history_db)) as conn:
+                conn.execute("CREATE TABLE hko_market_resolutions (target_date TEXT)")
+                conn.execute("INSERT INTO hko_market_resolutions VALUES ('2026-07-10')")
+                conn.execute("CREATE TABLE shadow_decisions (target_date TEXT, finalized_at TEXT, event_slug TEXT, question TEXT)")
+                conn.commit()
+            self.assertTrue(_hko_day_complete(history_db, "2026-07-10"))
 
 
 if __name__ == "__main__":

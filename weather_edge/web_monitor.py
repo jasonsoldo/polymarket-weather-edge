@@ -358,6 +358,8 @@ def _hong_kong_module(snapshot):
     state = "official_source_verified" if verified else "pending_hko_settlement_validation"
     blocker = "" if verified else "pending_hko_settlement_validation"
     summary = _table(("Settlement status", "Audit days", "Last final date", "Final daily max", "Resolved markets", "Matches", "Shadow samples", "Finalized", "Hypothetical PnL", "Block reason"), [(state, closure.get("audit_days", 0), closure.get("last_final_date", ""), closure.get("final_daily_max", ""), closure.get("markets_resolved", 0), closure.get("settlement_matches", 0), closure.get("shadow_samples", 0), closure.get("shadow_finalized", 0), _number(closure.get("shadow_hypothetical_pnl", 0)), blocker)])
+    readiness_rows = [(name.replace("_", " ").title(), item.get("actual", ""), item.get("required", ""), "PASS" if item.get("passed") else "BLOCKED") for name, item in (closure.get("requirements") or {}).items()]
+    readiness = _table(("Readiness gate", "Actual", "Required", "Status"), readiness_rows) or "Readiness evidence is not available yet"
     realtime = _table(
         ("Adapter", "Current", "Max since midnight", "Min since midnight", "Observed", "Final?"),
         [(
@@ -384,7 +386,7 @@ def _hong_kong_module(snapshot):
             bucket_rows.append((row.get("bucket", ""), f"{float(row.get('model_probability') or 0) * 100:.2f}%", row.get("price", ""), row.get("edge", ""), row.get("cost", ""), row.get("pnl_if_wins", "")))
     buckets = _table(("Bucket", "Probability", "Market price", "Edge", "Cost", "PnL if wins"), bucket_rows) or "No bucket probability data"
     gaps = ", ".join(dict.fromkeys(death_gaps)) or "None"
-    return "<h2>Hong Kong Overview</h2>" + summary + "<h2>HKO Live Observation</h2>" + realtime + "<h2>Dynamic Probability</h2>" + dynamic + buckets + f"<div class='item bad'>Death gaps: {_esc(gaps)}</div>" + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Shadow Reconciliation</h2>" + reconciliations + "<h2>Winning buckets</h2>" + ("".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket")
+    return "<h2>Hong Kong Overview</h2>" + summary + "<h2>Live Readiness</h2>" + readiness + "<h2>HKO Live Observation</h2>" + realtime + "<h2>Dynamic Probability</h2>" + dynamic + buckets + f"<div class='item bad'>Death gaps: {_esc(gaps)}</div>" + "<h2>Forecast Sources</h2>" + (_table(("Source", "Forecast high", "Unit", "Updated"), forecast_rows) or "No forecast data") + "<h2>Shadow Reconciliation</h2>" + reconciliations + "<h2>Winning buckets</h2>" + ("".join(f"<div class='item good'>{_esc(value)}</div>" for value in closure.get("winning_buckets", [])) or "No finalized winning bucket")
 
 def _table(headers, rows):
     if not rows: return ""

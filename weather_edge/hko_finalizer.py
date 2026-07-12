@@ -137,19 +137,36 @@ def finalize_hko_recent(lookback_days: int, history_db: str, positions_db: str, 
     results = []
     for offset in range(lookback_days):
         target_date = (end - timedelta(days=offset)).isoformat()
-        result = finalize_hko_day(target_date, history_db, positions_db, orders_db, pages)
+        result = {"target_date": target_date, "status": "already_finalized", "markets_resolved": 0, "positions_settled": 0, "realized_pnl": 0.0} if _hko_day_complete(history_db, target_date) else finalize_hko_day(target_date, history_db, positions_db, orders_db, pages)
         results.append(result)
         if progress:
             print(f"[{offset + 1}/{lookback_days}] {target_date} {result.get('status', 'unknown')}", file=sys.stderr, flush=True)
     return {
         "lookback_days": lookback_days,
-        "available_days": sum(item.get("status") == "finalized" for item in results),
-        "pending_days": sum(item.get("status") != "finalized" for item in results),
+        "available_days": sum(item.get("status") in {"finalized", "already_finalized"} for item in results),
+        "pending_days": sum(item.get("status") not in {"finalized", "already_finalized"} for item in results),
         "markets_resolved": sum(item.get("markets_resolved", 0) for item in results),
         "positions_settled": sum(item.get("positions_settled", 0) for item in results),
         "realized_pnl": sum(item.get("realized_pnl", 0.0) for item in results),
         "results": results,
     }
+
+
+def _hko_day_complete(history_db: str, target_date: str) -> bool:
+    try:
+        with closing(sqlite3.connect(history_db)) as conn:
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hko_market_resolutions'").fetchone():
+                return False
+            resolved = int(conn.execute("SELECT COUNT(*) FROM hko_market_resolutions WHERE target_date = ?", (target_date,)).fetchone()[0])
+            if not resolved:
+                return False
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='shadow_decisions'").fetchone():
+                return True
+            pending = int(conn.execute("""SELECT COUNT(*) FROM shadow_decisions WHERE target_date = ? AND finalized_at IS NULL
+                                           AND (lower(event_slug) LIKE '%hong-kong%' OR lower(question) LIKE '%hong kong%')""", (target_date,)).fetchone()[0])
+            return pending == 0
+    except sqlite3.Error:
+        return False
 
 
 def _is_dry_run_position(conn: sqlite3.Connection, market_id: str, token_id: str) -> bool:
@@ -190,7 +207,7 @@ def _finalize_shadow_decisions(conn: sqlite3.Connection, target_date: str, recor
 
 
 def hko_closure_status(history_db: str, orders_db: str) -> dict:
-    status = {"settlement_verified": False, "settlement_audit_passed": False, "historical_validation_ready": False, "audit_days": 0, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_samples": 0, "shadow_finalized": 0, "shadow_hypothetical_pnl": 0.0, "shadow_realized_pnl": 0.0, "last_finalized_at": "", "recent_shadow_reconciliations": []}
+    status = {"settlement_verified": False, "settlement_audit_passed": False, "historical_validation_ready": False, "official_data_days": 0, "audit_days": 0, "last_final_date": "", "final_daily_max": None, "markets_resolved": 0, "settlement_matches": 0, "winning_buckets": [], "shadow_samples": 0, "shadow_finalized": 0, "shadow_hypothetical_pnl": 0.0, "shadow_realized_pnl": 0.0, "last_finalized_at": "", "recent_shadow_reconciliations": [], "requirements": {}}
     try:
         with closing(sqlite3.connect(history_db)) as conn:
             row = conn.execute(
@@ -198,6 +215,7 @@ def hko_closure_status(history_db: str, orders_db: str) -> dict:
             ).fetchone()
             if row:
                 status.update({"last_final_date": row[0], "final_daily_max": row[1], "last_finalized_at": row[2]})
+            status["official_data_days"] = int(conn.execute("SELECT COUNT(DISTINCT target_date) FROM settlement_observations WHERE city = 'Hong Kong' AND status = 'available'").fetchone()[0])
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hko_market_resolutions'").fetchone():
                 rows = conn.execute(
                     "SELECT question, resolved_outcome, settlement_match FROM hko_market_resolutions WHERE target_date = ?",
@@ -209,7 +227,9 @@ def hko_closure_status(history_db: str, orders_db: str) -> dict:
                 status["settlement_audit_passed"] = bool(rows) and status["settlement_matches"] == len(rows)
                 status["audit_days"] = int(conn.execute("SELECT COUNT(*) FROM (SELECT target_date FROM hko_market_resolutions GROUP BY target_date HAVING COUNT(*) > 0 AND SUM(settlement_match) = COUNT(*))").fetchone()[0])
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='shadow_decisions'").fetchone():
-                shadow = conn.execute("SELECT COUNT(*), SUM(CASE WHEN finalized_at IS NOT NULL THEN 1 ELSE 0 END), COALESCE(SUM(hypothetical_realized_pnl), 0) FROM shadow_decisions").fetchone()
+                shadow = conn.execute("""SELECT COUNT(*), SUM(CASE WHEN finalized_at IS NOT NULL THEN 1 ELSE 0 END), COALESCE(SUM(hypothetical_realized_pnl), 0)
+                                         FROM shadow_decisions
+                                         WHERE lower(event_slug) LIKE '%hong-kong%' OR lower(question) LIKE '%hong kong%'""").fetchone()
                 status.update({"shadow_samples": int(shadow[0]), "shadow_finalized": int(shadow[1] or 0), "shadow_hypothetical_pnl": float(shadow[2] or 0)})
                 recent = conn.execute(
                     """SELECT d.target_date, d.event_slug, d.recommended_action,
@@ -218,14 +238,21 @@ def hko_closure_status(history_db: str, orders_db: str) -> dict:
                                WHERE s.city = 'Hong Kong' AND s.target_date = d.target_date AND s.status = 'available'
                                ORDER BY s.id DESC LIMIT 1)
                        FROM shadow_decisions d WHERE d.finalized_at IS NOT NULL
+                         AND (lower(d.event_slug) LIKE '%hong-kong%' OR lower(d.question) LIKE '%hong kong%')
                        ORDER BY d.finalized_at DESC LIMIT 10"""
                 ).fetchall()
                 status["recent_shadow_reconciliations"] = [
                     {"target_date": item[0], "event_slug": item[1], "recommended_action": item[2], "hypothetical_realized_pnl": item[3], "finalized_at": item[4], "final_temperature": item[5]}
                     for item in recent
                 ]
-            status["historical_validation_ready"] = status["audit_days"] >= 30 and status["shadow_finalized"] >= 7
-            status["settlement_verified"] = status["historical_validation_ready"] and os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true"
+            status["requirements"] = {
+                "official_data_days": {"actual": status["official_data_days"], "required": 30, "passed": status["official_data_days"] >= 30},
+                "matching_market_audit_days": {"actual": status["audit_days"], "required": 30, "passed": status["audit_days"] >= 30},
+                "finalized_shadow_samples": {"actual": status["shadow_finalized"], "required": 7, "passed": status["shadow_finalized"] >= 7},
+                "explicit_live_approval": {"actual": os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true", "required": True, "passed": os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true"},
+            }
+            status["historical_validation_ready"] = all(item["passed"] for key, item in status["requirements"].items() if key != "explicit_live_approval")
+            status["settlement_verified"] = all(item["passed"] for item in status["requirements"].values())
     except sqlite3.Error:
         pass
     try:

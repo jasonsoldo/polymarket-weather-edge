@@ -1,5 +1,7 @@
 import unittest
 import os
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from weather_edge.settlement_rules import SettlementRule
@@ -72,6 +74,11 @@ class SettlementSourceTests(unittest.TestCase):
         self.assertEqual(result.status, "available")
         self.assertAlmostEqual(result.max_temp, 31.2)
         self.assertAlmostEqual(result.min_temp, 26.1)
+
+    def test_hko_environment_flag_cannot_bypass_database_evidence(self):
+        rule = _rule("Hong Kong Observatory", "HKO", "2020-07-10")
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"HKO_SETTLEMENT_VERIFIED": "true", "HKO_VALIDATION_DB": str(Path(tmp) / "empty.sqlite")}):
+            self.assertEqual(settlement_source_capability(rule), "pending_hko_settlement_validation")
 
     def test_nws_reads_station_observations(self):
         rule = _rule("NWS", "KNYC", "2020-07-10")

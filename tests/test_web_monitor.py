@@ -150,6 +150,7 @@ class WebMonitorTests(unittest.TestCase):
         self.assertIn("HONG KONG FIRST", overview)
         self.assertIn("SHADOW REALIZED", overview)
         self.assertIn("pending_hko_settlement_validation", module)
+        self.assertIn("Live Readiness", module)
         self.assertIn("31.0", module)
         self.assertIn("0.60", module)
         self.assertIn("33.8", module)

@@ -1,5 +1,6 @@
 import os
 import json
+import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
@@ -39,7 +40,7 @@ def settlement_status_allows_scoring(status: str) -> bool:
 def settlement_source_capability(rule: SettlementRule) -> str:
     source = rule.settlement_source.lower()
     if "hong kong observatory" in source:
-        return "official_source_verified" if os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() == "true" else "pending_hko_settlement_validation"
+        return "official_source_verified" if _hko_settlement_verified() else "pending_hko_settlement_validation"
     if "nws" in source or "national weather service" in source or "noaa" in source:
         verified = {item.strip().upper() for item in os.getenv("NWS_SETTLEMENT_VERIFIED_STATIONS", "").split(",") if item.strip()}
         stations = {item.strip().upper() for item in rule.target_station_or_data_source.replace("|", ",").split(",") if item.strip()}
@@ -91,6 +92,25 @@ def _verified_wu_stations() -> set[str]:
         return {station.upper() for station, result in payload.items() if result.get("verified") is True}
     except (OSError, ValueError, AttributeError):
         return set()
+
+
+def _hko_settlement_verified() -> bool:
+    if os.getenv("HKO_SETTLEMENT_VERIFIED", "false").lower() != "true":
+        return False
+    path = os.getenv("HKO_VALIDATION_DB", "data/market_history.sqlite")
+    try:
+        with sqlite3.connect(path) as conn:
+            resolutions = conn.execute(
+                "SELECT COUNT(DISTINCT target_date), COUNT(*), COALESCE(SUM(settlement_match), 0) FROM hko_market_resolutions"
+            ).fetchone()
+            shadow = conn.execute(
+                """SELECT COUNT(*) FROM shadow_decisions
+                   WHERE finalized_at IS NOT NULL
+                     AND (lower(event_slug) LIKE '%hong-kong%' OR lower(question) LIKE '%hong kong%')"""
+            ).fetchone()
+        return int(resolutions[0]) >= 30 and int(resolutions[1]) > 0 and int(resolutions[1]) == int(resolutions[2]) and int(shadow[0]) >= 7
+    except sqlite3.Error:
+        return False
 
 
 
