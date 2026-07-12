@@ -1,0 +1,17 @@
+[Unit]
+Description=WeatherEdge Hong Kong fail-closed micro live cycle
+Wants=network-online.target weather-edge-monitor-all.service
+After=network-online.target weather-edge-monitor-all.service
+
+[Service]
+Type=simple
+User=jason
+WorkingDirectory=/opt/polymarket-weather-edge
+EnvironmentFile=/etc/weather-edge.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/polymarket-weather-edge/.venv/bin/python -m weather_edge.cli hong-kong-live-cycle --strategy-config /opt/polymarket-weather-edge/config/strategy.micro-live.json --risk-config /opt/polymarket-weather-edge/config/risk.micro-live.json --history-db /opt/polymarket-weather-edge/data/market_history.sqlite --orders-db /opt/polymarket-weather-edge/data/orders.sqlite --positions-db /opt/polymarket-weather-edge/data/positions.sqlite --limit 100 --max-pages 20
+Restart=always
+RestartSec=300
+
+[Install]
+WantedBy=multi-user.target

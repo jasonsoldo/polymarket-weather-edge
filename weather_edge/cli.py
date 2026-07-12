@@ -96,6 +96,21 @@ def main(argv=None) -> int:
     hko_status_parser.add_argument("--history-db", default="data/market_history.sqlite")
     hko_status_parser.add_argument("--orders-db", default="data/orders.sqlite")
 
+    live_preflight_parser = sub.add_parser("hong-kong-live-preflight")
+    live_preflight_parser.add_argument("--strategy-config", default="config/strategy.micro-live.json")
+    live_preflight_parser.add_argument("--risk-config", default="config/risk.micro-live.json")
+    live_preflight_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    live_preflight_parser.add_argument("--orders-db", default="data/orders.sqlite")
+
+    live_cycle_parser = sub.add_parser("hong-kong-live-cycle")
+    live_cycle_parser.add_argument("--strategy-config", default="config/strategy.micro-live.json")
+    live_cycle_parser.add_argument("--risk-config", default="config/risk.micro-live.json")
+    live_cycle_parser.add_argument("--history-db", default="data/market_history.sqlite")
+    live_cycle_parser.add_argument("--orders-db", default="data/orders.sqlite")
+    live_cycle_parser.add_argument("--positions-db", default="data/positions.sqlite")
+    live_cycle_parser.add_argument("--limit", type=int, default=100)
+    live_cycle_parser.add_argument("--max-pages", type=int, default=20)
+
     nws_finalize_parser = sub.add_parser("nws-finalize-day")
     nws_finalize_parser.add_argument("--date", default="yesterday")
     nws_finalize_parser.add_argument("--station", default="KLGA")
@@ -393,6 +408,30 @@ def main(argv=None) -> int:
         result["block_reason"] = "" if result["settlement_verified"] else "pending_hko_settlement_validation"
         print(json.dumps(result, indent=2))
         return 0 if result["settlement_verified"] else 2
+
+    if args.command == "hong-kong-live-preflight":
+        from .live_preflight import hong_kong_live_preflight
+
+        result = hong_kong_live_preflight(load_strategy_config(args.strategy_config), load_risk_config(args.risk_config), args.history_db, args.orders_db)
+        print(json.dumps(result, indent=2))
+        return 0 if result["ready"] else 2
+
+    if args.command == "hong-kong-live-cycle":
+        from .live_preflight import hong_kong_live_preflight
+        from .monitor import _resolve_target_date
+        from .reconciliation import reconcile_live_orders
+
+        strategy = load_strategy_config(args.strategy_config)
+        risk = load_risk_config(args.risk_config)
+        preflight = hong_kong_live_preflight(strategy, risk, args.history_db, args.orders_db)
+        if not preflight["ready"]:
+            print(json.dumps({"mode": "live", "city": "Hong Kong", "recommended_action": "NO_TRADE", "preflight": preflight}, indent=2))
+            return 2
+        reconciled_before = reconcile_live_orders(args.orders_db, args.positions_db)
+        result = run_live_dry_run("Hong Kong", 22.3193, 114.1694, _resolve_target_date("today", "Asia/Hong_Kong"), strategy, risk, args.orders_db, args.positions_db, market_limit=args.limit, max_pages=args.max_pages, scan_all_pages=True)
+        reconciled_after = reconcile_live_orders(args.orders_db, args.positions_db)
+        print(json.dumps({"preflight": preflight, "reconciled_before": reconciled_before, "cycle": result, "reconciled_after": reconciled_after}, indent=2))
+        return 0
 
     if args.command == "nws-finalize-day":
         from .nws_finalizer import finalize_nws_day
