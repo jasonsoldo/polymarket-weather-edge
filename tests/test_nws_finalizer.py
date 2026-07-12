@@ -17,7 +17,7 @@ class NwsFinalizerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             history_db = str(Path(tmp) / "history.sqlite")
             save_monitor_snapshot(history_db, {"observed_at": "2026-07-10T18:00:00Z", "city": "New York", "target_date": "2026-07-10", "weather": {"confidence": 0.9, "disagreement": 1.0}, "markets": [{"event_id": "event-ny", "event_slug": "highest-temperature-in-new-york-on-july-10-2026", "markets": [{"market_id": "market-85", "question": market["question"]}], "event_bucket_plan": {"settlement_rule": {"market_type": "max_temp", "settlement_source": "NWS"}, "decision": {"recommended_action": "block_new_position", "reasons": ["shadow_only"]}, "simulation_candidate": {"orders": [{"market_id": "market-85", "price": 0.4, "size": 2.0}], "curve": {"best_case_pnl": 1.2, "worst_case_pnl": -0.8}}}}]})
-            with patch("weather_edge.nws_finalizer.fetch_settlement_observation", return_value=observation), patch("weather_edge.nws_finalizer.closed_new_york_markets", return_value=[{"event": {}, "market": market}]):
+            with patch("weather_edge.nws_finalizer.fetch_settlement_observation", return_value=observation), patch("weather_edge.nws_finalizer.scan_closed_new_york_markets", return_value={"accepted": [{"event": {}, "market": market}], "rejected": []}):
                 result = finalize_nws_day("2026-07-10", history_db)
             with closing(sqlite3.connect(history_db)) as conn:
                 shadow = conn.execute("SELECT final_market_result, hypothetical_realized_pnl, finalized_at FROM shadow_decisions").fetchone()
@@ -41,6 +41,13 @@ class NwsFinalizerTests(unittest.TestCase):
         self.assertTrue(status["station_verified"])
         self.assertTrue(status["settlement_verified"])
         self.assertEqual(status["match_rate"], 1.0)
+
+    def test_blocks_when_polymarket_market_uses_wunderground(self):
+        observation = SettlementSourceResult("available", "NWS", "KLGA", "2026-07-10", 89.6, 75.2, "F", "2026-07-11T03:50:00Z", "official NWS observations")
+        with tempfile.TemporaryDirectory() as tmp, patch("weather_edge.nws_finalizer.fetch_settlement_observation", return_value=observation), patch("weather_edge.nws_finalizer.scan_closed_new_york_markets", return_value={"accepted": [], "rejected": [{"reason": "settlement_source_is_not_nws"}]}):
+            result = finalize_nws_day("2026-07-10", str(Path(tmp) / "history.sqlite"))
+        self.assertEqual(result["status"], "source_mismatch")
+        self.assertEqual(result["block_reason"], "market_settlement_source_is_not_nws")
 
 
 if __name__ == "__main__":

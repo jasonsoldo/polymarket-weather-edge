@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from .history_store import save_settlement_observation
 from .hko_finalizer import _finalize_shadow_decisions
-from .nws_polymarket import closed_new_york_markets, compare_day
+from .nws_polymarket import compare_day, scan_closed_new_york_markets
 from .settlement_rules import SettlementRule
 from .settlement_source import fetch_settlement_observation
 
@@ -37,7 +37,10 @@ def finalize_nws_day(target_date: str, history_db: str, station: str = "KLGA", p
     save_settlement_observation(history_db, "New York", target_date, observation.to_dict(), observation.observed_at)
     if observation.status != "available" or observation.max_temp is None:
         return {"target_date": target_date, "station": station, "status": observation.status, "reason": observation.reason, "markets_resolved": 0, "settlement_matches": 0, "shadow_finalized": 0}
-    records = closed_new_york_markets(target_date, pages)
+    scan = scan_closed_new_york_markets(target_date, pages)
+    records = scan["accepted"]
+    if not records and scan["rejected"]:
+        return {"target_date": target_date, "station": station, "status": "source_mismatch", "reason": "Polymarket market settlement source is not NWS/NOAA", "block_reason": "market_settlement_source_is_not_nws", "nws_high": observation.max_temp, "nws_low": observation.min_temp, "markets_resolved": 0, "settlement_matches": 0, "shadow_finalized": 0, "excluded_source_mismatch": len(scan["rejected"])}
     comparisons = compare_day(observation.max_temp, records)
     resolved_at = datetime.now(timezone.utc).isoformat()
     with closing(sqlite3.connect(history_db)) as conn:
